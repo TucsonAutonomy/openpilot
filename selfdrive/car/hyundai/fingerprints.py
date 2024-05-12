@@ -330,6 +330,23 @@ FW_VERSIONS = {
       b'\xf1\x00TL  MFC  AT USA LHD 1.00 1.06 95895-D3800 190107',
     ],
   },
+  CAR.HYUNDAI_TUCSON_2017: {
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00TL  LKAS AT KOR LHD 1.00 1.00 95895-D3500 170208',
+    ],
+    (Ecu.transmission, 0x7e1, None): [
+      b'\xf1\x006U2U0_C2\x00\x006U2U0051\x00\x00DTL0D17KSA\x8c\x7f\xd2\xb3’,
+      b'\xf1\x816U2U0051\x00\x00\xf1\x006U2U0_C2\x00\x006U2U0051\x00\x00DTL0D17KSA\x8c\x7f\xd2\xb3',
+      b'DTL0D17KSA',
+    ],
+    (Ecu.engine, 0x7e0, None): [
+      b'00000010:10SW019967:1200F10I 00000030:10SW019967:1200F10I 00000040:10SW019967:1200F10I 00000060:10SW019967:1’,
+      b'200F10I 00000080:10SW019967:1200F10I \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00’,
+      b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00’,
+      b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+      b'F1TL600AI0DIU702',
+    ],
+  },
   CAR.HYUNDAI_SANTA_FE: {
     (Ecu.fwdRadar, 0x7d0, None): [
       b'\xf1\x00TM__ SCC F-CUP      1.00 1.00 99110-S1210         ',
