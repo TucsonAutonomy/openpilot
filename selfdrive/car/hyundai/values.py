@@ -296,6 +296,11 @@ class CAR(Platforms):
     CarSpecs(mass=3520 * CV.LB_TO_KG, wheelbase=2.67, steerRatio=16.1, tireStiffnessFactor=0.385),
     flags=HyundaiFlags.TCU_GEARS,
   )
+  HYUNDAI_TUCSON_2017 = HyundaiPlatformConfig(
+    [HyundaiCarDocs("Hyundai Tucson Diesel 2017", car_parts=CarParts.common([CarHarness.hyundai_l]))],
+    CarSpecs(mass=1836, wheelbase=2.7, steerRatio=13.0, tireStiffnessFactor=1.0),
+    flags=HyundaiFlags.CLUSTER_GEARS,
+  )
   HYUNDAI_PALISADE = HyundaiPlatformConfig(
     [
       HyundaiCarDocs("Hyundai Palisade 2020-22", "All", video_link="https://youtu.be/TAnDqjF4fDY?t=456", car_parts=CarParts.common([CarHarness.hyundai_h])),
