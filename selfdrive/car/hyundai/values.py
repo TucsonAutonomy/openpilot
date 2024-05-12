@@ -297,7 +297,7 @@ class CAR(Platforms):
     flags=HyundaiFlags.TCU_GEARS,
   )
   HYUNDAI_TUCSON_2017 = HyundaiPlatformConfig(
-    [HyundaiCarDocs("Hyundai Tucson Diesel 2017", car_parts=CarParts.common([CarHarness.hyundai_l]))],
+    [HyundaiCarDocs("Hyundai Tucson Diesel 2017", car_parts=CarParts.common([CarHarness.hyundai_c]))],
     CarSpecs(mass=1836, wheelbase=2.7, steerRatio=13.0, tireStiffnessFactor=1.0),
     flags=HyundaiFlags.CLUSTER_GEARS,
   )
