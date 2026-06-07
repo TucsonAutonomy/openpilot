@@ -186,6 +186,9 @@ class VCruiseCarrot:
     self._pause_auto_speed_up = False
     self._activate_cruise = 0
     self._lat_enabled = self.params.get_int("AutoEngage") > 0
+    # CC-only cars engage lateral with the CRUISE (main) button only.
+    # Don't let RES+/SET- (speed buttons) turn on steering.
+    self._cc_only = self.params.get_int("HyundaiCcOnly") > 0
     self._v_cruise_kph_at_brake = 0
     self.cruise_state_available_last = False
 
@@ -492,7 +495,8 @@ class VCruiseCarrot:
 
     if not long_pressed:
       if button_type == ButtonType.accelCruise:
-        self._lat_enabled = True
+        if not self._cc_only:
+          self._lat_enabled = True
         self._pause_auto_speed_up = False
         if self._soft_hold_active > 0:
           self._soft_hold_active = 0
@@ -511,7 +515,8 @@ class VCruiseCarrot:
         self.carrot_cruise_active = False
 
       elif button_type == ButtonType.decelCruise:
-        self._lat_enabled = True
+        if not self._cc_only:
+          self._lat_enabled = True
         self._pause_auto_speed_up = True
         #self.carrot_cruise_active = False
 
