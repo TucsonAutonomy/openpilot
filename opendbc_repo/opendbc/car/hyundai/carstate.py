@@ -320,6 +320,11 @@ class CarState(CarStateBase):
       ret.cruiseState.enabled = cp.vl["TCS13"]["ACC_REQ"] == 1
       ret.cruiseState.standstill = False
       ret.cruiseState.nonAdaptive = False
+    elif self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
+      # CC-only (no SCC): there is no MainMode_ACC, so use the main (CRUISE) button
+      # toggle as "cruise available". This lets the driver engage lateral with the
+      # CRUISE button (rising edge of available enables lateral in cruise.py).
+      ret.cruiseState.available = self.main_enabled
     elif not self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
       self.main_enabled = ret.cruiseState.available = cp_cruise.vl["SCC11"]["MainMode_ACC"] == 1
       ret.cruiseState.enabled = cp_cruise.vl["SCC12"]["ACCMode"] != 0
