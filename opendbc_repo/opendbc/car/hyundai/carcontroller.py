@@ -309,7 +309,11 @@ class CarController(CarControllerBase):
     set_speed_in_units = hud_control.setSpeed * (CV.MS_TO_KPH if CS.is_metric else CV.MS_TO_MPH)
 
     # HUD messages
-    sys_warning, sys_state, left_lane_warning, right_lane_warning = process_hud_alert(CC.enabled, self.car_fingerprint,
+    # CC-only cars never "engage" (no longitudinal); they steer via AlwaysLateral (latActive).
+    # Report LKAS as active whenever steering is active so the MDPS keeps low-speed assist
+    # enabled (otherwise it reports torque-unavailable below the stock min steer speed).
+    lkas_enabled = (CC.latActive or CC.enabled) if (self.CP.flags & HyundaiFlags.CC_ONLY_CAR.value) else CC.enabled
+    sys_warning, sys_state, left_lane_warning, right_lane_warning = process_hud_alert(lkas_enabled, self.car_fingerprint,
                                                                                       hud_control)
 
     active_speed_decel = hud_control.activeCarrot == 3 and self.activeCarrot != 3 # 3: Speed Decel
@@ -412,7 +416,7 @@ class CarController(CarControllerBase):
       if CS.lkas11 is not None:
         if self.lkas11_active:
           can_sends.append(hyundaican.create_lkas11(self.packer, self.frame, self.CP, apply_torque, apply_steer_req,
-                                                    torque_fault, CS.lkas11, sys_warning, sys_state, CC.enabled,
+                                                    torque_fault, CS.lkas11, sys_warning, sys_state, lkas_enabled,
                                                     hud_control.leftLaneVisible, hud_control.rightLaneVisible,
                                                     left_lane_warning, right_lane_warning, self.is_ldws_car))
         self.lkas11_active = True
