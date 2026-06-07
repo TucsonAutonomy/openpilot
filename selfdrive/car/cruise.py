@@ -563,7 +563,7 @@ class VCruiseCarrot:
         print("lfaButton")
       elif button_type == ButtonType.cancel:
         self._paddle_decel_active = False
-        if self._cancel_button_mode in [1]:
+        if self._cancel_button_mode in [1] and not self._cc_only:
           self._lat_enabled = False
           self._add_log("Lateral " + "enabled" if self._lat_enabled else "disabled")
         self._cruise_cancel_state = True
@@ -584,7 +584,9 @@ class VCruiseCarrot:
 
       elif button_type == ButtonType.cancel:
         self._cruise_cancel_state = True
-        self._lat_enabled = False
+        # CC-only: CANCEL (short or long) only cancels cruise, keep steering on
+        if not self._cc_only:
+          self._lat_enabled = False
         self._paddle_decel_active = False
         #self.params.put_bool_nonblocking("ExperimentalMode", not self.params.get_bool("ExperimentalMode"))
         self._add_log("Lateral " + "enabled" if self._lat_enabled else "disabled")
