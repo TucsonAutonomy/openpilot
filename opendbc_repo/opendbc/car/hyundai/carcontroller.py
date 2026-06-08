@@ -443,6 +443,11 @@ class CarController(CarControllerBase):
                                                 CC.cruiseControl.override, use_fca, self.CP, CS, self.soft_hold_mode))
 
 
+      # CC-only: send minimal SCC "ACC active" so the MDPS allows low-speed LKAS torque (SMDPS).
+      if self.frame % 2 == 0 and (self.CP.flags & HyundaiFlags.CC_ONLY_CAR.value):
+        can_sends.extend(hyundaican.create_acc_commands_cc_only(self.packer, int(self.frame / 2),
+                                                                set_speed_in_units, CS.out.cruiseState.available))
+
       # 20 Hz LFA MFA message
       if self.frame % 5 == 0 and self.CP.flags & HyundaiFlags.SEND_LFA.value:
         can_sends.append(hyundaican.create_lfahda_mfc(self.packer, CC, self.blinking_signal))
