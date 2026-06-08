@@ -1022,6 +1022,13 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.audioPrompt: {
      ET.WARNING: EngagementAlert(AudibleAlert.prompt),
   },
+  # carrot: CC-only factory cruise on/off chime (sound only, no state change)
+  EventName.cruiseLampEngaged: {
+     ET.WARNING: EngagementAlert(AudibleAlert.engage),
+  },
+  EventName.cruiseLampDisengaged: {
+     ET.WARNING: EngagementAlert(AudibleAlert.disengage),
+  },
   EventName.audioRefuse: {
      ET.WARNING: EngagementAlert(AudibleAlert.refuse),
   },

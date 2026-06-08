@@ -169,6 +169,12 @@ class CarSpecificEvents:
       if self.low_speed_alert:
         events.add(EventName.belowSteerSpeed)
 
+      # carrot: chime when the factory cruise SET lamp turns on/off (CC-only cars)
+      if CS.cruiseLampOn and not CS_prev.cruiseLampOn:
+        events.add(EventName.cruiseLampEngaged)
+      elif not CS.cruiseLampOn and CS_prev.cruiseLampOn:
+        events.add(EventName.cruiseLampDisengaged)
+
     else:
       events = self.create_common_events(CS, CS_prev)
 

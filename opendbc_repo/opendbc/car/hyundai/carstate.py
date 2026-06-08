@@ -325,6 +325,8 @@ class CarState(CarStateBase):
       # toggle as "cruise available". This lets the driver engage lateral with the
       # CRUISE button (rising edge of available enables lateral in cruise.py).
       ret.cruiseState.available = self.main_enabled and self.controls_ready_count >= READY_COUNT_OK
+      # factory cruise SET lamp (EMS16) -> used only to chime on cruise on/off
+      ret.cruiseLampOn = cp.vl["EMS16"]["CRUISE_LAMP_S"] == 1
     elif not self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
       self.main_enabled = ret.cruiseState.available = cp_cruise.vl["SCC11"]["MainMode_ACC"] == 1
       ret.cruiseState.enabled = cp_cruise.vl["SCC12"]["ACCMode"] != 0
