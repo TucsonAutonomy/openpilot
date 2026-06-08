@@ -344,6 +344,14 @@ class CarState(CarStateBase):
       ret.espActive = cp.vl["TCS11"]["ABS_ACT"] == 1
       ret.accFaulted = cp.vl["TCS13"]["ACCEnable"] != 0  # 0 ACC CONTROL ENABLED, 1-3 ACC CONTROL DISABLED
       ret.brakeLights = bool(cp.vl["TCS13"]["BrakeLight"] or ret.brakePressed)
+    elif self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
+      # CC-only: TCS brake / auto-hold signals are not SCC-related, so read them for the
+      # dash/UI (e.g. auto-hold indicator). Skip accFaulted (no ACC on this car).
+      ret.brakePressed = cp.vl["TCS13"]["DriverOverride"] == 2
+      ret.brakeHoldActive = cp.vl["TCS15"]["AVH_LAMP"] == 2  # 0 OFF, 1 ERROR, 2 ACTIVE, 3 READY
+      ret.parkingBrake = cp.vl["TCS13"]["PBRAKE_ACT"] == 1
+      ret.espActive = cp.vl["TCS11"]["ABS_ACT"] == 1
+      ret.brakeLights = bool(cp.vl["TCS13"]["BrakeLight"] or ret.brakePressed)
 
     if self.CP.flags & (HyundaiFlags.HYBRID | HyundaiFlags.EV | HyundaiFlags.FCEV):
       if self.CP.flags & HyundaiFlags.FCEV:
