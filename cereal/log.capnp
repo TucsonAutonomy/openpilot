@@ -155,6 +155,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     torqueNNLoad @118;
     cruiseLampEngaged @119;
     cruiseLampDisengaged @120;
+    autoHoldStarted @121;
 
     soundsUnavailableDEPRECATED @47;
   }

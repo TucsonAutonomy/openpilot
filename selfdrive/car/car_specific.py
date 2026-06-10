@@ -6,6 +6,7 @@ from opendbc.car.interfaces import MAX_CTRL_SPEED
 from opendbc.car.volkswagen.values import CarControllerParams as VWCarControllerParams
 from opendbc.car.hyundai.interface import ENABLE_BUTTONS as HYUNDAI_ENABLE_BUTTONS
 from opendbc.car.hyundai.carstate import PREV_BUTTON_SAMPLES as HYUNDAI_PREV_BUTTON_SAMPLES
+from opendbc.car.hyundai.values import HyundaiFlags
 
 from openpilot.selfdrive.selfdrived.events import Events, ET
 
@@ -174,6 +175,10 @@ class CarSpecificEvents:
         events.add(EventName.cruiseLampEngaged)
       elif not CS.cruiseLampOn and CS_prev.cruiseLampOn:
         events.add(EventName.cruiseLampDisengaged)
+
+      # carrot: full-screen flash + chime when auto-hold starts (CC-only cars)
+      if (self.CP.flags & HyundaiFlags.CC_ONLY_CAR.value) and CS.brakeHoldActive and not CS_prev.brakeHoldActive:
+        events.add(EventName.autoHoldStarted)
 
     else:
       events = self.create_common_events(CS, CS_prev)

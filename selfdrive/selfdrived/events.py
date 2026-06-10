@@ -1030,6 +1030,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.cruiseLampDisengaged: {
      ET.PERMANENT: EngagementAlert(AudibleAlert.disengage),
   },
+  # carrot: CC-only full-screen flash + chime when auto-hold starts (then UI returns to the
+  # small indicator). ET.PERMANENT so it shows while disengaged.
+  EventName.autoHoldStarted: {
+     ET.PERMANENT: Alert(
+       "AUTO HOLD",
+       "",
+       AlertStatus.normal, AlertSize.full,
+       Priority.MID, VisualAlert.none, AudibleAlert.autoHold, 2.0),
+  },
   EventName.audioRefuse: {
      ET.WARNING: EngagementAlert(AudibleAlert.refuse),
   },
