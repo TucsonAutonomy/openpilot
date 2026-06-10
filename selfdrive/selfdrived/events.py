@@ -1022,12 +1022,13 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.audioPrompt: {
      ET.WARNING: EngagementAlert(AudibleAlert.prompt),
   },
-  # carrot: CC-only factory cruise on/off chime (sound only, no state change)
+  # carrot: CC-only factory cruise on/off chime (sound only, no state change).
+  # Use ET.PERMANENT so it plays even while openpilot is disengaged (CC-only is never enabled).
   EventName.cruiseLampEngaged: {
-     ET.WARNING: EngagementAlert(AudibleAlert.engage),
+     ET.PERMANENT: EngagementAlert(AudibleAlert.engage),
   },
   EventName.cruiseLampDisengaged: {
-     ET.WARNING: EngagementAlert(AudibleAlert.disengage),
+     ET.PERMANENT: EngagementAlert(AudibleAlert.disengage),
   },
   EventName.audioRefuse: {
      ET.WARNING: EngagementAlert(AudibleAlert.refuse),
