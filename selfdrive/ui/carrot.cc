@@ -1962,6 +1962,8 @@ public:
     QString apply_source = "";
     bool    latActive = false;
     bool    longActive = false;
+    bool    cruiseLampOn = false;
+    bool    ccOnly = false;
     int     xState = 0;
     int     trafficState = 0;
     int     trafficState_carrot = 0;
@@ -2004,6 +2006,8 @@ public:
         auto selfdrive_state = sm["selfdriveState"].getSelfdriveState();
         longActive = selfdrive_state.getEnabled();
         latActive = car_control.getLatActive();
+        cruiseLampOn = car_state.getCruiseLampOn();
+        ccOnly = params.getInt("HyundaiCcOnly") > 0;
 
         v_cruise = car_state.getVCruiseCluster();
         v_ego = car_state.getVEgoCluster();
@@ -2352,14 +2356,26 @@ public:
         char cruise_speed[32];
         int cruise_x = bx + 170;
         int cruise_y = by + 15;
-        if(longActive) sprintf(cruise_speed, "%d", (int)((s->scene.is_metric)?v_cruise: v_cruise * KM_TO_MILE + 0.5));
-		    else sprintf(cruise_speed, "--");
-        if (strcmp(cruise_speed_last, cruise_speed) != 0) {
-			    strcpy(cruise_speed_last, cruise_speed);
-          if(strcmp(cruise_speed, "--"))
-            ui_draw_text_a(s, cruise_x, cruise_y, cruise_speed, 60, COLOR_GREEN, BOLD);
-		    }
-        ui_draw_text(s, cruise_x, cruise_y, cruise_speed, 60, COLOR_GREEN, BOLD, 1.0, 5.0, COLOR_BLACK, COLOR_BLACK);
+        if (ccOnly && !longActive) {
+            // CC-only car: factory cruise set-speed is not available to openpilot,
+            // so just show a green dot when factory cruise is engaged, nothing when off.
+            if (cruiseLampOn) {
+                nvgBeginPath(s->vg);
+                nvgCircle(s->vg, cruise_x, cruise_y - 22, 18);
+                nvgFillColor(s->vg, COLOR_GREEN);
+                nvgFill(s->vg);
+            }
+        }
+        else {
+            if(longActive) sprintf(cruise_speed, "%d", (int)((s->scene.is_metric)?v_cruise: v_cruise * KM_TO_MILE + 0.5));
+            else sprintf(cruise_speed, "--");
+            if (strcmp(cruise_speed_last, cruise_speed) != 0) {
+                strcpy(cruise_speed_last, cruise_speed);
+              if(strcmp(cruise_speed, "--"))
+                ui_draw_text_a(s, cruise_x, cruise_y, cruise_speed, 60, COLOR_GREEN, BOLD);
+            }
+            ui_draw_text(s, cruise_x, cruise_y, cruise_speed, 60, COLOR_GREEN, BOLD, 1.0, 5.0, COLOR_BLACK, COLOR_BLACK);
+        }
 
         // draw apply speed
         NVGcolor textColor = COLOR_GREEN;
