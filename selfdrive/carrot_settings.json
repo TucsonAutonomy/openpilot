@@ -771,6 +771,22 @@
     },
     {
       "group": "조향일반",
+      "name": "BlinkerForceTurn",
+      "title": "깜빡이 강제턴(0)",
+      "descr": "30km/h 미만에서 운전자 깜빡이를 켜면 무조건 그 방향으로 회전\n0:사용안함 1:사용",
+      "egroup": "LATSET",
+      "etitle": "Blinker Force Turn(0)",
+      "edescr": "Below 30km/h, driver blinker always triggers a turn. 0: off, 1: on",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "unit": 1,
+      "cgroup": "转向设置",
+      "ctitle": "转向灯强制转弯(0)",
+      "cdescr": "低于30km/h时，驾驶员转向灯强制触发转弯。0:关闭 1:开启"
+    },
+    {
+      "group": "조향일반",
       "name": "AutoTurnControlSpeedTurn",
       "title": "ATC: 턴속도(20)",
       "descr": "ATC 턴시 적용속도\n0:사용안함",

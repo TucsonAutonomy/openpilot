@@ -61,6 +61,7 @@ class DesireHelper:
     self.laneChangeDelay = 0.0
     self.modelTurnSpeedFactor = 0.0
     self.model_turn_speed = 200.0
+    self.blinkerForceTurn = 0
 
     # misc
     self.prev_desire_enabled = False
@@ -80,6 +81,7 @@ class DesireHelper:
       self.laneLineCheck = self.params.get_int("LaneLineCheck")
       self.laneChangeDelay = self.params.get_float("LaneChangeDelay") * 0.1
       self.modelTurnSpeedFactor = self.params.get_float("ModelTurnSpeedFactor") * 0.1
+      self.blinkerForceTurn = self.params.get_int("BlinkerForceTurn")
 
   def _make_model_turn_speed(self, modeldata):
     if self.modelTurnSpeedFactor > 0:
@@ -301,6 +303,12 @@ class DesireHelper:
         )
       else:
         new_type = "none"
+
+      # carrot: BlinkerForceTurn - below lane-change speed, a driver blinker always
+      # means a turn (intersections/alleys/parking lots), bypassing the score/edge
+      # heuristics. ATC(nav) blinkers are not affected; above 30km/h unchanged.
+      if self.blinkerForceTurn > 0 and driver_enabled and below_lane_change_speed:
+        new_type = "turn"
 
       # switching rules
       if self.maneuver_type == "lane_change" and new_type == "turn" and self.lane_change_state not in (
