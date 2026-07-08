@@ -91,8 +91,10 @@ def clip_curvature(v_ego, prev_curvature, new_curvature, roll):
   min_lat_accel = -max_lateral_accel_no_roll + roll_compensation
   new_curvature, limited_accel = clamp(new_curvature, min_lat_accel / v_ego ** 2, max_lat_accel / v_ego ** 2)
 
-  new_curvature, limited_max_curv = clamp(new_curvature, -MAX_CURVATURE, MAX_CURVATURE)
-  return float(new_curvature), limited_accel or limited_max_curv
+  # carrot: no MAX_CURVATURE clamp (like 0.9.7) so tight low-speed turns (alleys) can use
+  # full steering lock. Only binds below ~17km/h - above that the lateral-accel clamp is
+  # stricter anyway, and the car's physical steering limit (~0.22-0.25) bounds it below.
+  return float(new_curvature), limited_accel
 
 def get_speed_error(modelV2: log.ModelDataV2, v_ego: float) -> float:
   # ToDo: Try relative error, and absolute speed
