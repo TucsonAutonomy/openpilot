@@ -62,6 +62,8 @@ class DesireHelper:
     self.modelTurnSpeedFactor = 0.0
     self.model_turn_speed = 200.0
     self.blinkerForceTurn = 0
+    self.blinker_force_turn_active = False
+    self.turn_pulse_timer = 0.0
 
     # misc
     self.prev_desire_enabled = False
@@ -307,7 +309,8 @@ class DesireHelper:
       # carrot: BlinkerForceTurn - below lane-change speed, a driver blinker always
       # means a turn (intersections/alleys/parking lots), bypassing the score/edge
       # heuristics. ATC(nav) blinkers are not affected; above 30km/h unchanged.
-      if self.blinkerForceTurn > 0 and driver_enabled and below_lane_change_speed:
+      self.blinker_force_turn_active = self.blinkerForceTurn > 0 and driver_enabled and below_lane_change_speed
+      if self.blinker_force_turn_active:
         new_type = "turn"
 
       # switching rules
@@ -441,8 +444,20 @@ class DesireHelper:
     if self.turn_direction != TurnDirection.none:
       self.desire = TURN_DESIRES[self.turn_direction]
       self.lane_change_direction = self.turn_direction
+      # carrot: BlinkerForceTurn - the model consumes desire as a rising-edge pulse and can
+      # drop a single pulse without acting on it. While the driver holds the blinker, blank
+      # the desire for one frame every second so the model keeps getting fresh turn pulses
+      # through the whole approach.
+      if self.blinker_force_turn_active:
+        self.turn_pulse_timer += DT_MDL
+        if self.turn_pulse_timer >= 1.0:
+          self.turn_pulse_timer = 0.0
+          self.desire = log.Desire.none
+      else:
+        self.turn_pulse_timer = 0.0
     else:
       self.desire = DESIRES[self.lane_change_direction][self.lane_change_state]
+      self.turn_pulse_timer = 0.0
 
     # keep pulse
     if self.lane_change_state in (LaneChangeState.off, LaneChangeState.laneChangeStarting):
