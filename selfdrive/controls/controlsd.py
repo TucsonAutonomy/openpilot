@@ -21,6 +21,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, STEER_ANGLE_SATURATION_THRESHOLD
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
+from openpilot.selfdrive.controls.lib.turn_assist import TurnAssist
 
 
 from openpilot.common.realtime import DT_CTRL, DT_MDL
@@ -58,6 +59,7 @@ class Controls:
     self.steer_limited_by_controls = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
+    self.turn_assist = TurnAssist()
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -170,6 +172,10 @@ class Controls:
         new_desired_curvature = smooth_value(curvature, self.desired_curvature, lat_smooth_seconds)
     else:      
       new_desired_curvature = smooth_value(model_v2.action.desiredCurvature, self.desired_curvature, 0.1)
+
+    # carrot: low-speed turn assist (BlinkerForceTurn=2) - crank curvature toward the
+    # driver's blinker when the model refuses to start a tight turn, hand off after rotation
+    new_desired_curvature = self.turn_assist.update(CS, CC.latActive, self.curvature, new_desired_curvature)
 
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
 
