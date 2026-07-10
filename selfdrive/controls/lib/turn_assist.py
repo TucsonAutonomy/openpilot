@@ -36,7 +36,7 @@ class TurnAssist:
 
     self.state = "idle"       # idle / ramp / fade
     self.armed = True         # re-engaging requires a fresh blinker off->on edge
-    self.direction = 0.0      # +1 left, -1 right (openpilot: positive curvature = left)
+    self.direction = 0.0      # -1 left, +1 right (this pipeline: negative desired curvature = left)
     self.assist_k = 0.0
     self.fade_rate = HANDOFF_FADE_RATE
     self.turned_deg = 0.0
@@ -61,7 +61,8 @@ class TurnAssist:
     self._update_params()
 
     one_blinker = CS.leftBlinker != CS.rightBlinker
-    cur_dir = 1.0 if CS.leftBlinker else -1.0
+    # sign verified in-car: in this pipeline negative desired curvature = left turn
+    cur_dir = -1.0 if CS.leftBlinker else 1.0
 
     if not one_blinker:
       self.armed = True
