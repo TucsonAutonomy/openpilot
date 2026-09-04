@@ -773,17 +773,17 @@
       "group": "조향일반",
       "name": "BlinkerForceTurn",
       "title": "깜빡이 강제턴(0)",
-      "descr": "저속에서 운전자 깜빡이를 켜면 그 방향으로 회전\n0:사용안함\n1:강제턴(모델에 지시만)\n2:강제턴+턴어시스트(20km/h미만 조향 직접 개시)",
+      "descr": "저속에서 운전자 깜빡이를 켜면 그 방향으로 회전\n0:사용안함\n1:강제턴(모델에 지시만)\n2:강제턴+턴어시스트(20km/h미만 조향 직접 개시)\n3:강제턴+턴어시스트(운전자가 핸들을 그 방향으로 돌릴 때만 개시)",
       "egroup": "LATSET",
       "etitle": "Blinker Force Turn(0)",
-      "edescr": "Driver blinker at low speed triggers a turn. 0: off, 1: turn desire only, 2: +turn assist (directly cranks steering below 20km/h)",
+      "edescr": "Driver blinker at low speed triggers a turn. 0: off, 1: turn desire only, 2: +turn assist (directly cranks steering below 20km/h), 3: +turn assist that engages only while the driver is pulling the wheel that way",
       "min": 0,
-      "max": 2,
+      "max": 3,
       "default": 0,
       "unit": 1,
       "cgroup": "转向设置",
       "ctitle": "转向灯强制转弯(0)",
-      "cdescr": "低速时驾驶员转向灯触发转弯。0:关闭 1:仅转向意图 2:+转弯辅助(20km/h以下直接转向)"
+      "cdescr": "低速时驾驶员转向灯触发转弯。0:关闭 1:仅转向意图 2:+转弯辅助(20km/h以下直接转向)\n3:仅在驾驶员朝该方向转动方向盘时启动"
     },
     {
       "group": "조향일반",

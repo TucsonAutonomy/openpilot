@@ -25,6 +25,11 @@ PAUSE_RESET_T = 20.0        # give up after this long at a standstill
 HANDOFF_ANGLE_DEG = 35.0    # rotation after which the model can see the turn path
 ABORT_ANGLE_DEG = 90.0      # never rotate further than a full corner
 TIMEOUT_T = 8.0             # max active time (excluding standstill pause)
+# Level 3 only: the driver starts the turn themselves and the assist adds to it, instead
+# of firing on the blinker alone. Matches the car's own steeringPressed threshold, so it
+# takes a deliberate pull - not a hand resting on the wheel. Torque sign follows the same
+# convention as curvature here: negative = left, positive = right.
+TORQUE_ENGAGE = 150.0
 
 
 class TurnAssist:
@@ -76,10 +81,19 @@ class TurnAssist:
 
     v = CS.vEgo
 
+    # level 2: engage on the blinker alone, with the driver's hands off.
+    # level 3: engage only once the driver is actually pulling the wheel the way the
+    # blinker points - we add to a turn they have started, rather than starting one for
+    # them. This is also why level 3 cannot fire as they let go at the exit of a corner.
+    if self.level >= 3:
+      driver_ok = cur_dir * CS.steeringTorque >= TORQUE_ENGAGE
+    else:
+      driver_ok = not CS.steeringPressed
+
     if self.state == "idle":
       if (self.armed and one_blinker and self.blinker_t >= DEBOUNCE_T and
           MIN_SPEED_ON <= v <= MAX_SPEED_ON and
-          not CS.steeringPressed and
+          driver_ok and
           CS.gearShifter == GearShifter.drive):
         self.state = "ramp"
         self.armed = False
@@ -94,8 +108,10 @@ class TurnAssist:
     # ---- active (ramp / fade) ----
     self.active_t += DT_CTRL
 
-    # driver steering input always wins, instantly
-    if CS.steeringPressed:
+    # Driver steering input always wins, instantly. On level 3 that cannot mean any
+    # torque at all - the driver is holding the wheel through the turn, which is what
+    # engaged us - so only torque AGAINST the turn counts as them overriding.
+    if (self.direction * CS.steeringTorque <= -TORQUE_ENGAGE) if self.level >= 3 else CS.steeringPressed:
       self._reset(rearm=False)
       return desired_curvature
 
