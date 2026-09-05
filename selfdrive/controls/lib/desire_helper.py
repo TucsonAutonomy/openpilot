@@ -62,6 +62,7 @@ class DesireHelper:
     self.modelTurnSpeedFactor = 0.0
     self.model_turn_speed = 200.0
     self.blinkerForceTurn = 0
+    self.force_turn_latched = False
     self.blinker_force_turn_active = False
     self.turn_pulse_timer = 0.0
 
@@ -309,7 +310,22 @@ class DesireHelper:
       # carrot: BlinkerForceTurn - below lane-change speed, a driver blinker always
       # means a turn (intersections/alleys/parking lots), bypassing the score/edge
       # heuristics. ATC(nav) blinkers are not affected; above 30km/h unchanged.
-      self.blinker_force_turn_active = self.blinkerForceTurn > 0 and driver_enabled and below_lane_change_speed
+      force_turn = self.blinkerForceTurn > 0 and driver_enabled and below_lane_change_speed
+      if force_turn and self.blinkerForceTurn >= 3:
+        # Level 3: the blinker alone is not enough - the driver has to be pulling the
+        # wheel that way. With no torque we leave the classifier alone, so the car
+        # behaves stock. Latched, because the model takes desire as a rising-edge pulse:
+        # a momentary dip in torque mid-corner would otherwise drop the desire and make
+        # it abandon the turn. Only opposing torque or dropping the blinker clears it.
+        # (steeringPressed is the car's own 150 threshold, same as the turn assist uses.)
+        toward = (carstate.steeringTorque > 0) if blinker_state == BLINKER_LEFT else (carstate.steeringTorque < 0)
+        if carstate.steeringPressed:
+          self.force_turn_latched = toward
+        force_turn = self.force_turn_latched
+      else:
+        self.force_turn_latched = False
+
+      self.blinker_force_turn_active = force_turn
       if self.blinker_force_turn_active:
         new_type = "turn"
 

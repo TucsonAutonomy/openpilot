@@ -27,9 +27,14 @@ ABORT_ANGLE_DEG = 90.0      # never rotate further than a full corner
 TIMEOUT_T = 8.0             # max active time (excluding standstill pause)
 # Level 3 only: the driver starts the turn themselves and the assist adds to it, instead
 # of firing on the blinker alone. Matches the car's own steeringPressed threshold, so it
-# takes a deliberate pull - not a hand resting on the wheel. Torque sign follows the same
-# convention as curvature here: negative = left, positive = right.
+# takes a deliberate pull - not a hand resting on the wheel.
 TORQUE_ENGAGE = 150.0
+# CAREFUL: steeringTorque and curvature use OPPOSITE sign conventions in this fork.
+# Driver torque is POSITIVE for left (see desire_helper.py's own torque checks), while
+# desired curvature is NEGATIVE for left. So torque toward the turn is -direction*torque.
+def _turn_torque(direction, steering_torque):
+  """Driver torque projected onto the turn: positive = pulling into it."""
+  return -direction * steering_torque
 
 
 class TurnAssist:
@@ -86,7 +91,7 @@ class TurnAssist:
     # blinker points - we add to a turn they have started, rather than starting one for
     # them. This is also why level 3 cannot fire as they let go at the exit of a corner.
     if self.level >= 3:
-      driver_ok = cur_dir * CS.steeringTorque >= TORQUE_ENGAGE
+      driver_ok = _turn_torque(cur_dir, CS.steeringTorque) >= TORQUE_ENGAGE
     else:
       driver_ok = not CS.steeringPressed
 
@@ -111,7 +116,8 @@ class TurnAssist:
     # Driver steering input always wins, instantly. On level 3 that cannot mean any
     # torque at all - the driver is holding the wheel through the turn, which is what
     # engaged us - so only torque AGAINST the turn counts as them overriding.
-    if (self.direction * CS.steeringTorque <= -TORQUE_ENGAGE) if self.level >= 3 else CS.steeringPressed:
+    if ((_turn_torque(self.direction, CS.steeringTorque) <= -TORQUE_ENGAGE)
+        if self.level >= 3 else CS.steeringPressed):
       self._reset(rearm=False)
       return desired_curvature
 
