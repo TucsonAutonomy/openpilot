@@ -480,6 +480,11 @@ class CarState(CarStateBase):
       ret.cruiseState.enabled = cp.vl["TCS13"]["ACC_REQ"] == 1
       ret.cruiseState.standstill = False
       ret.cruiseState.nonAdaptive = False
+    elif self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
+      # CC-only (no SCC): there is no MainMode_ACC, so use the main (CRUISE) button
+      # toggle as "cruise available". This lets the driver engage lateral with the
+      # CRUISE button (rising edge of available enables lateral in cruise.py).
+      ret.cruiseState.available = self.main_enabled and self.controls_ready_count >= READY_COUNT_OK
     elif not self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
       self.main_enabled = ret.cruiseState.available = cp_cruise.vl["SCC11"]["MainMode_ACC"] == 1
       ret.cruiseState.enabled = cp_cruise.vl["SCC12"]["ACCMode"] != 0
@@ -498,6 +503,14 @@ class CarState(CarStateBase):
       ret.espDisabled = cp.vl["TCS11"]["TCS_PAS"] == 1
       ret.espActive = cp.vl["TCS11"]["ABS_ACT"] == 1
       ret.accFaulted = cp.vl["TCS13"]["ACCEnable"] != 0  # 0 ACC CONTROL ENABLED, 1-3 ACC CONTROL DISABLED
+      ret.brakeLights = bool(cp.vl["TCS13"]["BrakeLight"] or ret.brakePressed)
+    elif self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
+      # CC-only: TCS brake / auto-hold signals are not SCC-related, so read them for the
+      # dash/UI (e.g. auto-hold indicator). Skip accFaulted (no ACC on this car).
+      ret.brakePressed = cp.vl["TCS13"]["DriverOverride"] == 2
+      ret.brakeHoldActive = cp.vl["TCS15"]["AVH_LAMP"] == 2  # 0 OFF, 1 ERROR, 2 ACTIVE, 3 READY
+      ret.parkingBrake = cp.vl["TCS13"]["PBRAKE_ACT"] == 1
+      ret.espActive = cp.vl["TCS11"]["ABS_ACT"] == 1
       ret.brakeLights = bool(cp.vl["TCS13"]["BrakeLight"] or ret.brakePressed)
 
     if self.CP.flags & (HyundaiFlags.HYBRID | HyundaiFlags.EV | HyundaiFlags.FCEV):

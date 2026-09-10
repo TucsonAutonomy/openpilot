@@ -37,6 +37,13 @@ class CarInterface(CarInterfaceBase):
       ret.flags |= HyundaiFlags.CAMERA_SCC.value
       print("$$$CAMERA_SCC toggled...")
 
+    # carrot: CC-only cars (basic cruise control, no SCC and no radar, e.g. 2017 Tucson Diesel).
+    # openpilot cannot do longitudinal without SCC, so run lateral (steering) only.
+    cc_only = params.get_int("HyundaiCcOnly")
+    if cc_only > 0:
+      ret.flags |= HyundaiFlags.CC_ONLY_CAR.value
+      print("$$$CC_ONLY (lateral-only, no SCC) toggled...")
+
     ret.brand = "hyundai"
 
     if candidate == CAR.KIA_SORENTO:
@@ -199,6 +206,13 @@ class CarInterface(CarInterfaceBase):
     else:
       print(f"$$$OenpilotLongitudinalControl = {alpha_long}")
 
+    # carrot: CC-only car has no SCC/radar -> lateral-only. Never engage openpilot longitudinal,
+    # and don't expose the Alpha-long toggle (it would make openpilot send phantom SCC messages).
+    if ret.flags & HyundaiFlags.CC_ONLY_CAR.value:
+      ret.radarUnavailable = True
+      ret.openpilotLongitudinalControl = False
+      ret.alphaLongitudinalAvailable = False
+
     #ret.radarUnavailable = False  # TODO: canfd... carrot, hyundai cars have radar
 
     ret.radarTimeStep = 0.05 #if params.get_int("EnableRadarTracks") > 0 else 0.02
@@ -236,6 +250,9 @@ class CarInterface(CarInterfaceBase):
 
     if ret.openpilotLongitudinalControl:
       ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.LONG.value
+    if ret.flags & HyundaiFlags.CC_ONLY_CAR.value:
+      # tell panda this car has no SCC so it doesn't require SCC12 in its rx checks
+      ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CC_ONLY.value
     if ret.flags & HyundaiFlags.HYBRID:
       ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.HYBRID_GAS.value
     elif ret.flags & HyundaiFlags.EV:

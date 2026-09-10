@@ -83,6 +83,7 @@ class HyundaiSafetyFlags(IntFlag):
   CANFD_LKA_STEERING_ALT = 128
   FCEV_GAS = 256
   ALT_LIMITS_2 = 512
+  CC_ONLY = 1024  # carrot: CC-only car (no SCC/radar), lateral-only. Skip SCC12 rx requirement.
 
 
 class HyundaiFlags(IntFlag):

@@ -373,6 +373,7 @@
           "zh": "现代·起亚",
           "params": [
             "HyundaiCameraSCC",
+            "HyundaiCcOnly",
             "IsLdwsCar",
             "HapticFeedbackWhenSpeedCamera"
           ]
@@ -2442,6 +2443,22 @@
       "cdescr": "1: 纵向控制车辆, 2: 巡航状态同步 (CAN-FD 车辆), 3: 原厂巡航 (CANFD 纵向线束)",
       "min": 0,
       "max": 3,
+      "default": 0,
+      "unit": 1
+    },
+    {
+      "group": "시작",
+      "name": "HyundaiCcOnly",
+      "title": "HYUNDAI: CC ONLY CAR(0)",
+      "descr": "SCC/레이더 없이 일반 크루즈만 있는 차량.\nON: 횡방향(조향)만 제어, 종방향은 사용 안함",
+      "egroup": "START",
+      "etitle": "HYUNDAI: CC ONLY CAR(0)",
+      "edescr": "Car with basic cruise control only (no SCC/radar).\nON: lateral (steering) only, no longitudinal",
+      "cgroup": "启动设置",
+      "ctitle": "现代: 仅巡航车辆 (0)",
+      "cdescr": "仅有普通巡航、无 SCC/雷达的车辆。\n开启: 仅横向(转向)控制, 不使用纵向",
+      "min": 0,
+      "max": 1,
       "default": 0,
       "unit": 1
     },
