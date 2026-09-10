@@ -1085,6 +1085,23 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.audioPrompt: {
      ET.WARNING: EngagementAlert(AudibleAlert.prompt),
   },
+  # carrot: CC-only factory cruise on/off chime (sound only, no state change).
+  # Use ET.PERMANENT so it plays even while openpilot is disengaged (CC-only is never enabled).
+  EventName.cruiseLampEngaged: {
+     ET.PERMANENT: EngagementAlert(AudibleAlert.engage),
+  },
+  EventName.cruiseLampDisengaged: {
+     ET.PERMANENT: EngagementAlert(AudibleAlert.disengage),
+  },
+  # carrot: CC-only full-screen flash + chime when auto-hold starts (then UI returns to the
+  # small indicator). ET.PERMANENT so it shows while disengaged.
+  EventName.autoHoldStarted: {
+     ET.PERMANENT: Alert(
+       "AUTO HOLD",
+       "",
+       AlertStatus.normal, AlertSize.full,
+       Priority.MID, VisualAlert.none, AudibleAlert.autoHold, 2.0),
+  },
   EventName.radarCutin: {
      ET.WARNING: EngagementAlert(AudibleAlert.radarCutin),
   },

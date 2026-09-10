@@ -200,6 +200,7 @@ class HudRenderer(Widget):
     self._show_date_time = 0
     self._show_tpms = 1
     self._show_plot_mode = 0
+    self._cc_only = 0
     self._longitudinal_personality = 7
 
     self._date_time_minute_key: tuple[int, int, int, int, int] | None = None
@@ -215,6 +216,7 @@ class HudRenderer(Widget):
       show_date_time = ui_state.params.get_int("ShowDateTime")
       show_tpms = ui_state.params.get_int("ShowTpms")
       show_plot_mode = ui_state.params.get_int("ShowPlotMode")
+      cc_only = ui_state.params.get_int("HyundaiCcOnly")
     except Exception:
       # Keep the last complete snapshot and retry on the next frame.
       return
@@ -231,6 +233,7 @@ class HudRenderer(Widget):
     self._show_date_time = show_date_time
     self._show_tpms = show_tpms
     self._show_plot_mode = show_plot_mode
+    self._cc_only = cc_only
     self._longitudinal_personality = longitudinal_personality
     self._hud_params_next_refresh_time = now if personality_read_failed else now + HUD_PARAM_REFRESH_INTERVAL
 
@@ -658,23 +661,29 @@ class HudRenderer(Widget):
       align="center_bottom",
     )
 
-    if self._engaged and self.is_cruise_set:
-      set_speed = float(self.set_speed)
-      if not ui_state.is_metric:
-        set_speed *= KM_TO_MILE
-      cruise_text = str(int(round(set_speed)))
+    if self._cc_only > 0 and not self._engaged:
+      # CC-only car: the factory cruise set speed is never sent to openpilot, so a number
+      # would be meaningless. Show a green dot while factory cruise is on, nothing when off.
+      if sm['carState'].cruiseLampOn:
+        rl.draw_circle(bx + 170, by - 7, 18, COLORS.CARROT_GREEN)
     else:
-      cruise_text = "--"
+      if self._engaged and self.is_cruise_set:
+        set_speed = float(self.set_speed)
+        if not ui_state.is_metric:
+          set_speed *= KM_TO_MILE
+        cruise_text = str(int(round(set_speed)))
+      else:
+        cruise_text = "--"
 
-    self._update_cruise_speed_animation(cruise_text)
+      self._update_cruise_speed_animation(cruise_text)
 
-    draw_text_ui_style(
-      cruise_text, bx + 170, by + 15, 60, COLORS.CARROT_GREEN,
-      font=self._font_display,
-      border_width=1.0,
-      shadow_offset=5.0,
-      align="center_bottom",
-    )
+      draw_text_ui_style(
+        cruise_text, bx + 170, by + 15, 60, COLORS.CARROT_GREEN,
+        font=self._font_display,
+        border_width=1.0,
+        shadow_offset=5.0,
+        align="center_bottom",
+      )
 
     if ov.active:
       ov_speed = float(ov.speed_kph)
