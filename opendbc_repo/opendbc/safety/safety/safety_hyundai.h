@@ -396,7 +396,18 @@ static safety_config hyundai_init_carrot(bool legacy_car) {
     };
 
     safety_config ret;
-    if (hyundai_camera_scc) {
+    if (hyundai_cc_only) {
+        // carrot: CC-only car (no SCC/radar), lateral-only. Don't require SCC12 in rx checks.
+        static RxCheck hyundai_cc_only_rx_checks[] = {
+          HYUNDAI_COMMON_RX_CHECKS(false)
+        };
+        static RxCheck hyundai_cc_only_rx_checks_legacy[] = {
+          HYUNDAI_COMMON_RX_CHECKS(true)
+        };
+        if(legacy_car) ret = BUILD_SAFETY_CFG(hyundai_cc_only_rx_checks_legacy, HYUNDAI_TX_MSGS);
+        else ret = BUILD_SAFETY_CFG(hyundai_cc_only_rx_checks, HYUNDAI_TX_MSGS);
+    }
+    else if (hyundai_camera_scc) {
         static RxCheck hyundai_cam_scc_rx_checks[] = {
           HYUNDAI_COMMON_RX_CHECKS(false)
           HYUNDAI_SCC12_ADDR_CHECK(2)

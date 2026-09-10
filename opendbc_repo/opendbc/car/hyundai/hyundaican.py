@@ -254,6 +254,36 @@ def create_acc_commands_scc(packer, enabled, accel, jerk, idx, hud_control, set_
 
   return commands
 
+def create_acc_commands_cc_only(packer, idx, set_speed, acc_main_on):
+  # Minimal SCC for CC-only cars (no factory SCC). Provides the "ACC active" signal the
+  # MDPS needs to allow low-speed LKAS torque (SMDPS). No FCA/AEB/accel to minimize dash
+  # warnings; openpilot does not do longitudinal here.
+  commands = []
+  scc11 = {
+    "MainMode_ACC": 1 if acc_main_on else 0,
+    "AliveCounterACC": idx % 0x10,
+    "VSetDis": set_speed if acc_main_on else 0,
+    "TauGapSet": 4,
+    "SCCInfoDisplay": 0,
+    "ObjValid": 0,
+    "ACC_ObjStatus": 0,
+  }
+  commands.append(packer.make_can_msg("SCC11", 0, scc11))
+
+  scc12 = {
+    "ACCMode": 1 if acc_main_on else 0,
+    "StopReq": 0,
+    "aReqRaw": 0.0,
+    "aReqValue": 0.0,
+    "ACCFailInfo": 0,
+    "CR_VSM_Alive": idx % 0xF,
+    "CR_VSM_ChkSum": 0,
+  }
+  scc12_dat = packer.make_can_msg("SCC12", 0, scc12)[1]
+  scc12["CR_VSM_ChkSum"] = 0x10 - sum(sum(divmod(i, 16)) for i in scc12_dat) % 0x10
+  commands.append(packer.make_can_msg("SCC12", 0, scc12))
+  return commands
+
 def create_acc_opt_copy(CS, packer):
   values = copy.copy(CS.scc13)
   if values["NEW_SIGNAL_1"]  == 255:
