@@ -282,6 +282,7 @@ struct CarState {
     canPacketCount @2 :UInt32;
     receiveMonoTime @3 :UInt64;
   }
+  cruiseLampOn @94 :Bool; # carrot: factory cruise SET lamp state (for CC-only cruise on/off sound). @93 is upstream's radarInput.
   struct Tpms {
     fl @0 :Float32;
     fr @1 :Float32;
