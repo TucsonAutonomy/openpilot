@@ -600,12 +600,16 @@ class CarState(CarStateBase):
                         *create_button_events(self.main_buttons[-1], prev_main_buttons, {1: ButtonType.mainCruise})]
 
 
-    if not self.CP.flags & HyundaiFlags.CC_ONLY_CAR:
-      tpms_unit = cp.vl["TPMS11"]["UNIT"] * 0.725 if int(cp.vl["TPMS11"]["UNIT"]) > 0 else 1.
-      ret.tpms.fl = tpms_unit * cp.vl["TPMS11"]["PRESSURE_FL"]
-      ret.tpms.fr = tpms_unit * cp.vl["TPMS11"]["PRESSURE_FR"]
-      ret.tpms.rl = tpms_unit * cp.vl["TPMS11"]["PRESSURE_RL"]
-      ret.tpms.rr = tpms_unit * cp.vl["TPMS11"]["PRESSURE_RR"]
+    # TPMS11 is skipped upstream for every CC_ONLY_CAR, but the only cars carrying that
+    # flag upstream are two EVs that don't send it. A CC-only ICE car like the Tucson
+    # does - it showed tire pressures before the flag was turned on - so read it here.
+    # The pt parser doesn't require a fixed message list, so a car that never sends
+    # TPMS11 just leaves these at zero instead of failing CAN validity.
+    tpms_unit = cp.vl["TPMS11"]["UNIT"] * 0.725 if int(cp.vl["TPMS11"]["UNIT"]) > 0 else 1.
+    ret.tpms.fl = tpms_unit * cp.vl["TPMS11"]["PRESSURE_FL"]
+    ret.tpms.fr = tpms_unit * cp.vl["TPMS11"]["PRESSURE_FR"]
+    ret.tpms.rl = tpms_unit * cp.vl["TPMS11"]["PRESSURE_RL"]
+    ret.tpms.rr = tpms_unit * cp.vl["TPMS11"]["PRESSURE_RR"]
 
     cluSpeed = cp.vl["CLU11"]["CF_Clu_Vanz"]
     decimal = cp.vl["CLU11"]["CF_Clu_VanzDecimal"]
