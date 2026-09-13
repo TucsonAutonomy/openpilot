@@ -552,6 +552,7 @@ struct CarControl {
       nnff @34;
       radarCutin @35;
       radarStationaryLead @36;
+      audioTurn2 @37;  # carrot: ATC fork/exit announcement
     }
   }
 
