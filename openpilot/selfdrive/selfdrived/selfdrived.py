@@ -142,7 +142,7 @@ class SelfdriveD:
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     self.atc_type_last = ""
-    self.atc_blinker_last = 0
+    self.atc_announced = None
 
 
     # some comma three with NVMe experience NVMe dropouts mid-drive that
@@ -342,18 +342,26 @@ class SelfdriveD:
     # was skipped, and it never covered route lane changes at all. DesireHelper publishes
     # the blinker request it settled on, after driver-conflict and ignore handling, so the
     # rising edge here is exactly "ATC is about to steer".
+    # Track what was last announced rather than the raw blinker, so a maneuver that
+    # changes kind under a blinker that never drops gets announced again. A far turn
+    # starts as "atc left" (take the left lane now) and becomes "turn left" on approach;
+    # without this the driver would hear only the lane change and never the turn itself.
     atc_blinker = self.sm['modelV2'].meta.atcBlinker
-    if atc_blinker != 0 and self.atc_blinker_last == 0 and self.sm.alive['carrotMan']:
+    if atc_blinker == 0:
+      self.atc_announced = None
+    elif self.sm.alive['carrotMan']:
       atc_type = self.sm['carrotMan'].atcType
       left = atc_blinker == 1
       if "turn" in atc_type:
-        self.events.add(EventName.atcTurnLeft if left else EventName.atcTurnRight)
+        announce = EventName.atcTurnLeft if left else EventName.atcTurnRight
       elif "fork" in atc_type:
         # one announcement for either side - which way it forks is obvious from the road
-        self.events.add(EventName.atcFork)
+        announce = EventName.atcFork
       else:
-        self.events.add(EventName.atcLaneChangeLeft if left else EventName.atcLaneChangeRight)
-    self.atc_blinker_last = atc_blinker
+        announce = EventName.atcLaneChangeLeft if left else EventName.atcLaneChangeRight
+      if announce != self.atc_announced:
+        self.events.add(announce)
+        self.atc_announced = announce
 
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:
