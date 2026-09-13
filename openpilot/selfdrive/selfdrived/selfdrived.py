@@ -142,6 +142,7 @@ class SelfdriveD:
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     self.atc_type_last = ""
+    self.atc_blinker_last = 0
 
 
     # some comma three with NVMe experience NVMe dropouts mid-drive that
@@ -335,17 +336,24 @@ class SelfdriveD:
       self.events.add(EventName.excessiveActuation)
     # ******************************************************************************************
 
-    if self.sm.alive['carrotMan']:
+    # carrot: announce an ATC maneuver the moment ATC turns its blinker on, which is a
+    # second or two before the car actually starts moving. The old version keyed off
+    # atcType transitions ("... prepare" -> "..."), so it stayed silent whenever a stage
+    # was skipped, and it never covered route lane changes at all. DesireHelper publishes
+    # the blinker request it settled on, after driver-conflict and ignore handling, so the
+    # rising edge here is exactly "ATC is about to steer".
+    atc_blinker = self.sm['modelV2'].meta.atcBlinker
+    if atc_blinker != 0 and self.atc_blinker_last == 0 and self.sm.alive['carrotMan']:
       atc_type = self.sm['carrotMan'].atcType
-      if atc_type != self.atc_type_last:
-        if "prepare" not in atc_type and "prepare" in self.atc_type_last: # fork left/right prepare -> fork left/right
-          if "fork" in atc_type:
-            self.events.add(EventName.audioLaneChange)
-        elif "prepare" in atc_type:
-          pass
-        elif "turn" in atc_type and "turn" not in self.atc_type_last:   # fork left/right -> turn left/right
-          self.events.add(EventName.audioTurn)
-        self.atc_type_last = atc_type
+      left = atc_blinker == 1
+      if "turn" in atc_type:
+        self.events.add(EventName.atcTurnLeft if left else EventName.atcTurnRight)
+      elif "fork" in atc_type:
+        # one announcement for either side - which way it forks is obvious from the road
+        self.events.add(EventName.atcFork)
+      else:
+        self.events.add(EventName.atcLaneChangeLeft if left else EventName.atcLaneChangeRight)
+    self.atc_blinker_last = atc_blinker
 
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:

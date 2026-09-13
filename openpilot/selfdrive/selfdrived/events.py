@@ -1085,6 +1085,43 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.audioPrompt: {
      ET.WARNING: EngagementAlert(AudibleAlert.prompt),
   },
+  # carrot: announce an ATC maneuver as its blinker comes on, before the car moves.
+  # ET.PERMANENT so it also reaches CC-only cars, which never reach the engaged state.
+  EventName.atcTurnLeft: {
+     ET.PERMANENT: Alert(
+       "좌회전합니다",
+       "",
+       AlertStatus.normal, AlertSize.small,
+       Priority.LOW, VisualAlert.none, AudibleAlert.audioTurn, 2.0),
+  },
+  EventName.atcTurnRight: {
+     ET.PERMANENT: Alert(
+       "우회전합니다",
+       "",
+       AlertStatus.normal, AlertSize.small,
+       Priority.LOW, VisualAlert.none, AudibleAlert.audioTurn, 2.0),
+  },
+  EventName.atcFork: {
+     ET.PERMANENT: Alert(
+       "진출합니다",
+       "",
+       AlertStatus.normal, AlertSize.small,
+       Priority.LOW, VisualAlert.none, AudibleAlert.audioTurn2, 2.0),
+  },
+  EventName.atcLaneChangeLeft: {
+     ET.PERMANENT: Alert(
+       "좌측 차선변경",
+       "",
+       AlertStatus.normal, AlertSize.small,
+       Priority.LOW, VisualAlert.none, AudibleAlert.laneChange, 2.0),
+  },
+  EventName.atcLaneChangeRight: {
+     ET.PERMANENT: Alert(
+       "우측 차선변경",
+       "",
+       AlertStatus.normal, AlertSize.small,
+       Priority.LOW, VisualAlert.none, AudibleAlert.laneChange, 2.0),
+  },
   # carrot: CC-only factory cruise on/off chime (sound only, no state change).
   # Use ET.PERMANENT so it plays even while openpilot is disengaged (CC-only is never enabled).
   EventName.cruiseLampEngaged: {

@@ -46,6 +46,9 @@ class DesireHelper:
     self.carrot_cmd_index_last = 0
     self.atc_type = ""
     self.atc_active = 0  # 0: 없음, 1: ATC 동작, 2: 충돌
+    # carrot: ATC's final blinker request (0 none, 1 left, 2 right), published so
+    # selfdrived can announce an automatic maneuver before the car starts moving.
+    self.atc_blinker = 0
 
     # auto lane change
     self.auto_lane_change_enable = False
@@ -157,6 +160,11 @@ class DesireHelper:
     if self.atc_type != atc_type:
       atc_desire_enabled = False
     self.atc_type = atc_type
+
+    # carrot: what ATC actually asks for, after every suppression above. selfdrived
+    # watches this for its rising edge, so the announcement lands when the blinker
+    # comes on rather than when the car is already moving.
+    self.atc_blinker = 1 if atc_blinker_state == BLINKER_LEFT else 2 if atc_blinker_state == BLINKER_RIGHT else 0
 
     return atc_blinker_state, atc_desire_enabled
 

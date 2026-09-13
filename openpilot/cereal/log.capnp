@@ -162,6 +162,11 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     cruiseLampEngaged @125;
     cruiseLampDisengaged @126;
     autoHoldStarted @127;
+    atcTurnLeft @128;
+    atcTurnRight @129;
+    atcFork @130;
+    atcLaneChangeLeft @131;
+    atcLaneChangeRight @132;
 
     soundsUnavailableDEPRECATED @47;
   }
@@ -1090,6 +1095,9 @@ struct ModelDataV2 {
     modelTurnSpeed @17 :Float32;
     laneChangeAvailableLeft @18 :Bool;
     laneChangeAvailableRight @19 :Bool;
+    # carrot: ATC's own blinker request, after all gating (driver conflict, ignore, etc).
+    # 0 none, 1 left, 2 right. Used to announce an automatic maneuver before it starts.
+    atcBlinker @20 :UInt8;
 
     deprecated :group {
       brakeDisengageProb @2 :Float32;
