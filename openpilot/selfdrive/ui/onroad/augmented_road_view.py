@@ -46,6 +46,7 @@ class AugmentedRoadView(CameraView):
     self._cached_matrix: np.ndarray | None = None
     self._content_rect = rl.Rectangle()
     self._suppress_camera_for_cluster = False
+    self._blinker_timer = 0
 
     self.model_renderer = ModelRenderer()
     self._hud_renderer = HudRenderer()
@@ -305,8 +306,20 @@ class AugmentedRoadView(CameraView):
 
     bottom_color = self._get_border_color(ui_state.status)
 
-    left_blink = bool(car_state.leftBlinker)
-    right_blink = bool(car_state.rightBlinker)
+    # carrot: also light the side ATC is asking for. The car's blinker lamp only reflects
+    # the stalk, and openpilot cannot move it, so an automatic maneuver would otherwise
+    # give no on-screen warning at all. atcBlinker is DesireHelper's final request, after
+    # driver-conflict and ignore handling. carState.leftBlinker is held for 50 frames to
+    # debounce the lamp, so drive the flash from a timer here instead - a steady bar reads
+    # as "held on" rather than "signalling".
+    atc_blinker = sm['modelV2'].meta.atcBlinker if sm.alive['modelV2'] else 0
+    left_blink = bool(car_state.leftBlinker) or atc_blinker == 1
+    right_blink = bool(car_state.rightBlinker) or atc_blinker == 2
+
+    self._blinker_timer = (self._blinker_timer + 1) % 16
+    blink_on = self._blinker_timer < 8
+    left_blink = left_blink and blink_on
+    right_blink = right_blink and blink_on
 
     # ---------- geometry ----------
     top_h = max(0.0, mid_y - gap_half - y)
