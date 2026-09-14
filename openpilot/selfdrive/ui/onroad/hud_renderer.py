@@ -1081,8 +1081,10 @@ class HudRenderer(Widget):
     except Exception:
       return
 
-    bx = rect.x + rect.width - 125
-    dw = 80
+    # Pulled in from 125 to make room for the larger text below: at 55 a two-digit
+    # value is ~30px either side of centre, which ran to the screen edge at 125.
+    bx = rect.x + rect.width - 150
+    dw = 95
 
     if self._show_tpms in (1, 3):
       self._draw_tpms_values(bx, rect.y + 130, dw, fl, fr, rl_v, rr)
@@ -1093,20 +1095,22 @@ class HudRenderer(Widget):
     self, bx: float, by: float, dw: float,
     fl: float, fr: float, rl_v: float, rr: float,
   ) -> None:
+    # 55 reads from the driver's seat without competing with the 60 the cruise set
+    # speed uses. The spacing grows with it so the four values stay apart.
     draw_text_ui_style(
-      self._get_tpms_text(fl), bx - dw, by - 55, 40, self._get_tpms_color(fl),
+      self._get_tpms_text(fl), bx - dw, by - 62, 55, self._get_tpms_color(fl),
       font=self._font_display, border_width=1.0, shadow_offset=4.0, align='center_bottom',
     )
     draw_text_ui_style(
-      self._get_tpms_text(fr), bx + dw, by - 55, 40, self._get_tpms_color(fr),
+      self._get_tpms_text(fr), bx + dw, by - 62, 55, self._get_tpms_color(fr),
       font=self._font_display, border_width=1.0, shadow_offset=4.0, align='center_bottom',
     )
     draw_text_ui_style(
-      self._get_tpms_text(rl_v), bx - dw, by + 70, 40, self._get_tpms_color(rl_v),
+      self._get_tpms_text(rl_v), bx - dw, by + 82, 55, self._get_tpms_color(rl_v),
       font=self._font_display, border_width=1.0, shadow_offset=4.0, align='center_bottom',
     )
     draw_text_ui_style(
-      self._get_tpms_text(rr), bx + dw, by + 70, 40, self._get_tpms_color(rr),
+      self._get_tpms_text(rr), bx + dw, by + 82, 55, self._get_tpms_color(rr),
       font=self._font_display, border_width=1.0, shadow_offset=4.0, align='center_bottom',
     )
 
