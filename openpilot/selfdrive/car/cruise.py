@@ -202,6 +202,9 @@ class VCruiseCarrot:
     self._hold_interlock_active = False
     self._steering_interlock_active = False
     self._lat_enabled = self.params.get_int("AutoEngage") > 0
+    # CC-only cars engage lateral with the CRUISE (main) button only.
+    # Don't let RES+/SET- (speed buttons) turn on steering.
+    self._cc_only = self.params.get_int("HyundaiCcOnly") > 0
     self._v_cruise_kph_at_brake = 0
     self.cruise_state_available_last = False
 
@@ -390,6 +393,10 @@ class VCruiseCarrot:
           self.v_cruise_kph = np.clip(v_cruise_kph, 30, self._cruise_speed_max)
           self.v_cruise_cluster_kph = self.v_cruise_kph
     else:
+      # CC-only: CRUISE (main) button acts as a steering toggle. When the driver
+      # turns main off (available falling edge), turn lateral off too.
+      if self._cc_only and self.cruise_state_available_last:
+        self._lat_enabled = False
       self.v_cruise_kph = np.clip(v_cruise_kph, self._cruise_speed_min, self._cruise_speed_max) #max(20, self.v_ego_kph_set) #V_CRUISE_UNSET
       self.v_cruise_cluster_kph = self.v_cruise_kph #V_CRUISE_UNSET
       #if self.cruise_state_available_last: # 최초 한번이라도 cruiseState.available이 True였다면
@@ -555,7 +562,8 @@ class VCruiseCarrot:
 
     if not long_pressed:
       if button_type == ButtonType.accelCruise:
-        self._lat_enabled = True
+        if not self._cc_only:
+          self._lat_enabled = True
         self._pause_auto_speed_up = False
         if self._soft_hold_active > 0:
           self._soft_hold_active = 0
@@ -586,7 +594,8 @@ class VCruiseCarrot:
         self.carrot_cruise_active = False
 
       elif button_type == ButtonType.decelCruise:
-        self._lat_enabled = True
+        if not self._cc_only:
+          self._lat_enabled = True
         self._pause_auto_speed_up = True
         #self.carrot_cruise_active = False
 
@@ -634,7 +643,7 @@ class VCruiseCarrot:
         print("lfaButton")
       elif button_type == ButtonType.cancel:
         self._paddle_decel_active = False
-        if self._cancel_button_mode in [1]:
+        if self._cancel_button_mode in [1] and not self._cc_only:
           self._lat_enabled = False
           self._add_log("Lateral " + "enabled" if self._lat_enabled else "disabled")
         self._cruise_cancel_state = True
@@ -655,7 +664,9 @@ class VCruiseCarrot:
 
       elif button_type == ButtonType.cancel:
         self._cruise_cancel_state = True
-        self._lat_enabled = False
+        # CC-only: CANCEL (short or long) only cancels cruise, keep steering on
+        if not self._cc_only:
+          self._lat_enabled = False
         self._paddle_decel_active = False
         #self.params.put_bool_nonblocking("ExperimentalMode", not self.params.get_bool("ExperimentalMode"))
         self._add_log("Lateral " + "enabled" if self._lat_enabled else "disabled")
