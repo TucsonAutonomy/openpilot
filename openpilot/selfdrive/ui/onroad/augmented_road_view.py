@@ -303,14 +303,26 @@ class AugmentedRoadView(CameraView):
     segments = 10
 
     # ---------- colors ----------
+    # carrot: colour the border from latEnabled - steering switched on at the CRUISE
+    # button - rather than latActive, which is whether lateral is being applied right
+    # now and so drops out at a standstill. The driver wants to see that steering is
+    # armed, and that does not stop being true when the car stops.
+    lat_on = bool(car_state.latEnabled)
+
     if car_state.steeringPressed:
       top_color = self._get_border_color(UIStatus.OVERRIDE)
-    elif ui_state.lat_active:
+    elif lat_on:
       top_color = self._get_border_color(UIStatus.ENGAGED)
     else:
       top_color = self._get_border_color(UIStatus.DISENGAGED)
 
-    bottom_color = self._get_border_color(ui_state.status)
+    # The bottom bar carries openpilot's own state, which on a CC-only car never leaves
+    # DISENGAGED because it never engages. Let steering light it, but only in place of
+    # DISENGAGED - anything more specific still outranks it.
+    bottom_status = ui_state.status
+    if lat_on and bottom_status == UIStatus.DISENGAGED:
+      bottom_status = UIStatus.ENGAGED
+    bottom_color = self._get_border_color(bottom_status)
 
     # carrot: also light the side ATC is asking for. The car's blinker lamp only reflects
     # the stalk, and openpilot cannot move it, so an automatic maneuver would otherwise
