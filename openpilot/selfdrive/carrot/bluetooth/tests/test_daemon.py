@@ -140,3 +140,56 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
     os.close(output)
   assert sent == [('accelCruiseLong', False), ('accelCruiseLong', True)]
   assert writer.events['cruise'] == []
+
+
+@pytest.mark.parametrize('pedal', ['none', 'gas', 'brake'])
+@pytest.mark.parametrize('action', ['laneLeft', 'accelCruise'])
+def test_accelerator_only_lets_short_lane_change_through(tmp_path, monkeypatch, pedal, action):
+  mac = '00:11:22:33:44:55'
+  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105': action}}}}
+  clock = [10.0]
+  sent = []
+
+  class Writer(CommandWriter):
+    def send(self, *args, **kwargs):
+      sent.append(args[1])
+      super().send(*args, **kwargs)
+
+  monkeypatch.setattr(daemon, 'RUNTIME', tmp_path)
+  monkeypatch.setattr(daemon, 'config', lambda: settings)
+  monkeypatch.setattr(daemon, 'CommandWriter', lambda: Writer(tmp_path))
+  monkeypatch.setattr(daemon.time, 'monotonic', lambda: clock[0])
+
+  class State(dict):
+    alive = dict.fromkeys(('carState', 'deviceState', 'selfdriveState'), True)
+    valid = {'carState': True}
+
+    def update(self, _):
+      clock[0] += .01
+
+  state = State(carState=SimpleNamespace(canValid=True, vEgo=20, brakePressed=pedal == 'brake', gasPressed=pedal == 'gas',
+                                       gearShifter='drive', buttonEvents=[]), deviceState=SimpleNamespace(started=True),
+                selfdriveState=SimpleNamespace(enabled=False))
+  monkeypatch.setattr(daemon.messaging, 'SubMaster', lambda _: state)
+  fd, output = os.pipe()
+  monkeypatch.setattr(daemon, 'devices', lambda: {'input-0': (mac, 'remote')})
+  monkeypatch.setattr(daemon, 'open_input', lambda _: fd)
+  os.write(output, b''.join(daemon.EVENT.pack(10, 5000, *event) for event in
+                            [(1, 105, 1), (0, 0, 0), (1, 105, 0), (0, 0, 0)]))
+  os.close(output)
+  calls = [0]
+
+  class Done(Exception):
+    pass
+
+  def select(fds, *_):
+    calls[0] += 1
+    if calls[0] > 1:
+      raise Done
+    return fds, [], []
+
+  monkeypatch.setattr(daemon.select, 'select', select)
+  with pytest.raises(Done):
+    daemon.main()
+  expected = pedal == 'none' or (pedal == 'gas' and action == 'laneLeft')
+  assert sent == ([action] if expected else [])

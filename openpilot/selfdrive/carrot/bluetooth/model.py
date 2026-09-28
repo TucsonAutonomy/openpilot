@@ -17,6 +17,7 @@ LONG_SECONDS = 0.7
 REPEAT_SECONDS = 0.5
 MAX_HOLD_SECONDS = 10
 REPEAT_ACTIONS = ('accelCruise', 'decelCruise', 'accelCruiseLong', 'decelCruiseLong')
+LANE_ACTIONS = ('laneLeft', 'laneRight')
 COMMAND_TTL = 0.4
 BLUETOOTH_CANCEL = -3  # Explicit driver cancel, including PCM cruise; -1/-2 retain their existing meanings.
 DEFAULT_MAPPING = {'up': 'accelCruise', 'down': 'decelCruise', 'left': 'laneLeft', 'right': 'laneRight',
@@ -144,9 +145,10 @@ class Decoder:
   def active_longs(self):
     return {hold['token'] + '@long' for hold in self.holds.values() if hold['fired'] and not hold['expired']}
 
-  def cancel_holds(self):
+  def cancel_holds(self, keep=()):
     for hold in self.holds.values():
-      hold['expired'] = True
+      if hold['token'] not in keep:
+        hold['expired'] = True
 
   def hold(self, source, token, started):
     previous = self.holds.get(source)
@@ -279,7 +281,7 @@ class CommandWriter:
         self.publish(channel)
 
   def send(self, mac, action, now, hold=None, repeat=False):
-    channel = 'lane' if action in ('laneLeft', 'laneRight') else 'cruise'
+    channel = 'lane' if action in LANE_ACTIONS else 'cruise'
     self.sequence += 1
     events = [e for e in self.events[channel] if 0 <= now - e['time'] <= COMMAND_TTL and (not hold or e.get('hold') != hold)]
     events.append({'id': f'{self.session}:{self.sequence}', 'time': now, 'action': action, 'address': mac, 'hold': hold, 'repeat': repeat})
