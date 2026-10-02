@@ -39,18 +39,24 @@ NETWORK_TYPE = {0: "gsm", 1: "gsm", 3: "gsm", 8: "gsm",
                 7: "lte", 9: "lte", 10: "lte",
                 11: "nr", 12: "nr", 13: "nr"}
 
-DIAL_CID = 1
+# LTE attaches with CID 1's APN as stored by the previous boot, and some carriers (e.g. KT) hang
+# up a PPP dial asking for a second PDN on that same APN. CID 1 therefore stays network-provided,
+# and a user-configured APN is dialed on its own CID so the two never match across reboots.
+ATTACH_CID = 1
+APN_DIAL_CID = 2
 WEBBING_ICCID_PREFIX = "8985235"
 
-PPPD_CMD = [
-  "sudo", "pppd", PPP_PORT, "460800", "noauth", "nodetach", "noipdefault", "usepeerdns",
-  "nodefaultroute", "connect",
-  "/usr/sbin/chat -v ABORT 'NO CARRIER' ABORT 'NO DIALTONE' ABORT 'BUSY' " +
-  f"ABORT 'NO ANSWER' ABORT 'ERROR' TIMEOUT 5 '' AT OK ATD*99***{DIAL_CID}# CONNECT ''",
-  "lcp-echo-interval", "30", "lcp-echo-failure", "4", "mtu", "1500", "mru", "1500",
-  "novj", "novjccomp", "ipcp-accept-local", "ipcp-accept-remote", "nomagic",
-  "user", '""', "password", '""',
-]
+
+def pppd_cmd(cid: int) -> list[str]:
+  return [
+    "sudo", "pppd", PPP_PORT, "460800", "noauth", "nodetach", "noipdefault", "usepeerdns",
+    "nodefaultroute", "connect",
+    "/usr/sbin/chat -v ABORT 'NO CARRIER' ABORT 'NO DIALTONE' ABORT 'BUSY' " +
+    f"ABORT 'NO ANSWER' ABORT 'ERROR' TIMEOUT 5 '' AT OK ATD*99***{cid}# CONNECT ''",
+    "lcp-echo-interval", "30", "lcp-echo-failure", "4", "mtu", "1500", "mru", "1500",
+    "novj", "novjccomp", "ipcp-accept-local", "ipcp-accept-remote", "nomagic",
+    "user", '""', "password", '""',
+  ]
 INITIAL_STATE = {
   "seconds_since_boot": 0,
   "state": "INITIALIZING",
@@ -84,11 +90,12 @@ class PPPSession:
     self._proc: subprocess.Popen | None = None
     self._fails = 0
     self._peer = ""
+    self.cid = ATTACH_CID
 
   def start(self):
-    self._proc = subprocess.Popen(PPPD_CMD, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    self._proc = subprocess.Popen(pppd_cmd(self.cid), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     self._peer = ""
-    logging.info(f"PPP dialing CID {DIAL_CID}")
+    logging.info(f"PPP dialing CID {self.cid}")
 
   def kill(self):
     subprocess.run(["sudo", "killall", "-9", "pppd"], capture_output=True)
@@ -302,8 +309,11 @@ class Modem:
     self._apn = self._read_param("GsmApn")
     self._roaming_allowed = self._is_roaming_allowed()
     # blank APN lets the carrier supply one via PCO
-    self._at(f'AT+CGDCONT={DIAL_CID},"IP","{self._apn}"')
-    logging.info(f"APN '{self._apn or '(network-provided)'}' written to CID {DIAL_CID}, roaming={'on' if self._roaming_allowed else 'off'}")
+    self._at(f'AT+CGDCONT={ATTACH_CID},"IP",""')
+    self._ppp.cid = APN_DIAL_CID if self._apn else ATTACH_CID
+    if self._apn:
+      self._at(f'AT+CGDCONT={APN_DIAL_CID},"IP","{self._apn}"')
+    logging.info(f"APN '{self._apn or '(network-provided)'}' written to CID {self._ppp.cid}, roaming={'on' if self._roaming_allowed else 'off'}")
     if identity["sim_state"] == "ABSENT":
       logging.info("SIM absent")
 
@@ -508,7 +518,7 @@ class Modem:
     return {}
 
   def _read_cellular_dns(self) -> list[str]:
-    v = self._atv(f"AT+CGCONTRDP={DIAL_CID}", "+CGCONTRDP:")
+    v = self._atv(f"AT+CGCONTRDP={self._ppp.cid}", "+CGCONTRDP:")
     if not v:
       return []
     # +CGCONTRDP: <cid>,<bearer_id>,<apn>,<local_addr>,<gw_addr>,<dns_prim>,<dns_sec>,...
