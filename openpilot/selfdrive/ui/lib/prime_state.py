@@ -22,6 +22,11 @@ class PrimeType(IntEnum):
   PURPLE = 5
 
 
+# Plans that ship a comma SIM. Every other state, including an unpaired or not-yet-fetched
+# device, uses the driver's own SIM and needs cellular settings and tethering forwarding.
+COMMA_SIM_PRIME_TYPES = (PrimeType.MAGENTA, PrimeType.BLUE, PrimeType.MAGENTA_NEW, PrimeType.PURPLE)
+
+
 class PrimeState:
   FETCH_INTERVAL = 5.0  # seconds between API calls
   API_TIMEOUT = 10.0  # seconds for API requests

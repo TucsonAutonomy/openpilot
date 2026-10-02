@@ -1,4 +1,5 @@
 import atexit
+import os
 import threading
 import time
 import uuid
@@ -33,6 +34,7 @@ except Exception:
 
 TETHERING_IP_ADDRESS = "192.168.43.1"
 DEFAULT_TETHERING_PASSWORD = "swagswagcomma"
+IPTABLES_LEGACY = "/usr/sbin/iptables-legacy"
 SIGNAL_QUEUE_SIZE = 10
 SCAN_PERIOD_SECONDS = 5
 BACKGROUND_SCAN_PERIOD_SECONDS = 5
@@ -796,13 +798,37 @@ class WifiManager:
   def set_ipv4_forward(self, enabled: bool):
     self._ipv4_forward = enabled
 
+  @staticmethod
+  def _ensure_tethering_nat():
+    # The AGNOS 4.9 kernel rejects the nftables NAT that NetworkManager's shared mode installs,
+    # so hotspot clients reach the device but never the cellular uplink. Add the equivalent
+    # rules once with iptables-legacy; -C keeps repeated activations from duplicating them.
+    if not os.path.exists(IPTABLES_LEGACY):
+      return
+    subnet = TETHERING_IP_ADDRESS.rsplit('.', 1)[0] + '.0/24'
+    rules = [
+      ('nat', 'POSTROUTING', ['-s', subnet, '!', '-d', subnet, '-j', 'MASQUERADE']),
+      ('filter', 'FORWARD', ['-s', subnet, '-j', 'ACCEPT']),
+      ('filter', 'FORWARD', ['-d', subnet, '-m', 'state', '--state', 'RELATED,ESTABLISHED', '-j', 'ACCEPT']),
+    ]
+    for table, chain, spec in rules:
+      base = ['sudo', '-n', IPTABLES_LEGACY, '-t', table]
+      if subprocess.run(base + ['-C', chain, *spec], capture_output=True).returncode == 0:
+        continue
+      r = subprocess.run(base + ['-A', chain, *spec], capture_output=True, text=True)
+      if r.returncode != 0:
+        cloudlog.warning(f"tethering NAT rule failed ({table} {chain}): {r.stderr.strip()}")
+
   def set_tethering_active(self, active: bool):
     def worker():
       if active:
         self.activate_connection(self._tethering_ssid, block=True)
 
-        if not self._ipv4_forward:
-          time.sleep(5)
+        time.sleep(5)
+        if self._ipv4_forward:
+          subprocess.run(["sudo", "sysctl", "net.ipv4.ip_forward=1"], check=False)
+          self._ensure_tethering_nat()
+        else:
           cloudlog.warning("net.ipv4.ip_forward = 0")
           subprocess.run(["sudo", "sysctl", "net.ipv4.ip_forward=0"], check=False)
       else:
