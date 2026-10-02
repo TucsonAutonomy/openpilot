@@ -144,7 +144,7 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
 
 @pytest.mark.parametrize('pedal', ['none', 'gas', 'brake'])
 @pytest.mark.parametrize('action', ['laneLeft', 'accelCruise'])
-def test_accelerator_only_lets_short_lane_change_through(tmp_path, monkeypatch, pedal, action):
+def test_pedals_only_let_short_lane_change_through(tmp_path, monkeypatch, pedal, action):
   mac = '00:11:22:33:44:55'
   settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105': action}}}}
   clock = [10.0]
@@ -191,5 +191,5 @@ def test_accelerator_only_lets_short_lane_change_through(tmp_path, monkeypatch, 
   monkeypatch.setattr(daemon.select, 'select', select)
   with pytest.raises(Done):
     daemon.main()
-  expected = pedal == 'none' or (pedal == 'gas' and action == 'laneLeft')
+  expected = pedal == 'none' or action == 'laneLeft'
   assert sent == ([action] if expected else [])

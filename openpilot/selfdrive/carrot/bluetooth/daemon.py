@@ -80,7 +80,7 @@ def main():
     testing = learning.get('address') == mac
     held = decoder.active_longs
     if hold_blocked and not testing:
-      # The accelerator alone only spares short/double lane-change presses; brake and the rest still cancel everything.
+      # Pedals alone only spare short/double lane-change presses; everything else still cancels all holds.
       keep = () if hard_blocked else {key.split('@')[0] for key, action in device['mapping'].items()
                                       if action in LANE_ACTIONS and not key.endswith('@long')}
       decoder.cancel_holds(keep)
@@ -106,9 +106,9 @@ def main():
       car_ok = sm.alive['carState'] and sm.valid['carState'] and sm['carState'].canValid
       enabled = sm.alive['selfdriveState'] and sm['selfdriveState'].enabled
       cs = sm['carState']
-      hard_blocked = (not started or not car_ok or not sm.alive['selfdriveState'] or cs.brakePressed or
+      hard_blocked = (not started or not car_ok or not sm.alive['selfdriveState'] or
                       cs.gearShifter != 'drive' or bool(cs.buttonEvents) or (previously_enabled and not enabled))
-      hold_blocked = hard_blocked or cs.gasPressed
+      hold_blocked = hard_blocked or cs.gasPressed or cs.brakePressed
       previously_enabled = enabled
       stationary = (sm.alive['deviceState'] and not sm['deviceState'].started) or (
         car_ok and abs(sm['carState'].vEgo) < 0.1 and sm.alive['selfdriveState'] and not sm['selfdriveState'].enabled)
