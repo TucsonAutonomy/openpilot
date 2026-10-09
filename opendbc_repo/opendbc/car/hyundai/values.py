@@ -847,6 +847,11 @@ class Buttons:
   LFA_BUTTON = 5
 
 
+# carrot: an explicit Bluetooth remote cancel arrives as CarState.activateCruise == -3
+# (openpilot/selfdrive/carrot/bluetooth/model.py BLUETOOTH_CANCEL).
+REMOTE_CANCEL_REQUEST = -3
+
+
 def get_platform_codes(fw_versions: list[bytes]) -> set[tuple[bytes, bytes | None]]:
   # Returns unique, platform-specific identification codes for a set of versions
   codes = set()  # (code-Optional[part], date)

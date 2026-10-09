@@ -55,6 +55,9 @@ static const CanMsg HYUNDAI_TX_MSGS[] = {
 
 static bool hyundai_legacy = false;
 static bool hyundai_cruise_buttons_alt = false;
+// carrot: CC-only cars have no SCC12, so the factory cruise "SET" lamp (EMS16 CRUISE_LAMP_S)
+// is the only engaged signal. It only gates CLU11 CANCEL and never touches controls_allowed.
+static bool hyundai_cc_only_cruise_lamp = false;
 
 static uint8_t hyundai_get_counter(const CANPacket_t *to_push) {
   int addr = GET_ADDR(to_push);
@@ -173,6 +176,11 @@ static void hyundai_rx_hook(const CANPacket_t *to_push) {
     } else {
     }
 
+    // EMS16 CRUISE_LAMP_S (bit 26), only sent by ICE cars
+    if (hyundai_cc_only && (addr == 0x260)) {
+      hyundai_cc_only_cruise_lamp = GET_BIT(to_push, 26U);
+    }
+
     // sample wheel speed, averaging opposite corners
     if (addr == 0x386) {
       uint32_t front_left_speed = GET_BYTES(to_push, 0, 2) & 0x3FFFU;
@@ -273,7 +281,7 @@ static bool hyundai_tx_hook(const CANPacket_t *to_send) {
 
     bool allowed_resume = (button == 1);// && controls_allowed;
     bool allowed_set_decel = (button == 2) && controls_allowed;
-    bool allowed_cancel = (button == 4) && cruise_engaged_prev;
+    bool allowed_cancel = (button == 4) && (cruise_engaged_prev || (hyundai_cc_only && hyundai_cc_only_cruise_lamp));
     bool allowed_gap_dist = (button == 3) && controls_allowed;
     if (!(allowed_resume || allowed_set_decel || allowed_cancel || allowed_gap_dist)) {
       tx = false;
@@ -366,6 +374,8 @@ static int hyundai_fwd_hook(CANPacket_t* to_send) {
   - legacy(on/off) + camera_scc(allways longitudinal on) + longitudinal(scc off)
 */
 static safety_config hyundai_init_carrot(bool legacy_car) {
+    hyundai_cc_only_cruise_lamp = false;
+
     static const CanMsg HYUNDAI_LONG_TX_MSGS[] = {
       {0x340, 0, 8}, // LKAS11 Bus 0
       {0x4F1, 0, 4}, // CLU11 Bus 0

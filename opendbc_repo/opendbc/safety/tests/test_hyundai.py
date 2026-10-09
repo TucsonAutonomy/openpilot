@@ -269,5 +269,55 @@ class TestHyundaiLongitudinalSafetyCameraSCC(HyundaiLongitudinalBase, TestHyunda
     pass
 
 
+class TestHyundaiCcOnlyCancel(unittest.TestCase):
+  """carrot: CC-only cars have no SCC12, so CLU11 CANCEL is gated by the factory cruise lamp (EMS16)."""
+  SAFETY_MODELS = (CarParams.SafetyModel.hyundai, CarParams.SafetyModel.hyundaiLegacy)
+  CANCEL, SET_DECEL = 4, 2
+
+  def _setup(self, safety_model, param):
+    self.packer = CANPackerPanda("hyundai_kia_generic")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(safety_model, param)
+    self.safety.init_tests()
+    self.cnt = 0
+
+  def _cruise_lamp_msg(self, lamp_on):
+    values = {"CRUISE_LAMP_S": lamp_on, "AliveCounter": self.cnt % 4}
+    self.cnt += 1
+    return self.packer.make_can_msg_panda("EMS16", 0, values, fix_checksum=checksum)
+
+  def _button_msg(self, button):
+    return self.packer.make_can_msg_panda("CLU11", 0, {"CF_Clu_CruiseSwState": button})
+
+  def _set_lamp(self, lamp_on):
+    self.assertTrue(self.safety.safety_rx_hook(self._cruise_lamp_msg(lamp_on)))
+
+  def test_cancel_follows_cruise_lamp(self):
+    for safety_model in self.SAFETY_MODELS:
+      with self.subTest(safety_model=safety_model):
+        self._setup(safety_model, HyundaiSafetyFlags.CC_ONLY)
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.CANCEL)))
+        self._set_lamp(True)
+        self.assertTrue(self.safety.safety_tx_hook(self._button_msg(self.CANCEL)))
+        self._set_lamp(False)
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.CANCEL)))
+
+  def test_lamp_never_allows_set_or_controls(self):
+    for safety_model in self.SAFETY_MODELS:
+      with self.subTest(safety_model=safety_model):
+        self._setup(safety_model, HyundaiSafetyFlags.CC_ONLY)
+        self.safety.set_controls_allowed(False)
+        self._set_lamp(True)
+        self.assertFalse(self.safety.get_controls_allowed())
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
+
+  def test_lamp_ignored_without_cc_only(self):
+    for safety_model in self.SAFETY_MODELS:
+      with self.subTest(safety_model=safety_model):
+        self._setup(safety_model, 0)
+        self._set_lamp(True)
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.CANCEL)))
+
+
 if __name__ == "__main__":
   unittest.main()
