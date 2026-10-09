@@ -8,7 +8,8 @@ from opendbc.car.hyundai import hyundaicanfd, hyundaican
 from opendbc.car.hyundai.carstate import CarState
 from opendbc.car.hyundai.stopping import CanfdStopping
 from opendbc.car.hyundai.hyundaicanfd import CanBus
-from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CAN_GEARS, HyundaiExtFlags, REMOTE_CANCEL_REQUEST
+from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CAN_GEARS, HyundaiExtFlags, REMOTE_CANCEL_REQUEST, \
+                                       REMOTE_CRUISE_TOGGLE_REQUEST
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.filter_simple import MyMovingAverage
@@ -49,33 +50,57 @@ CANFD_JERK_RELEASE_THRESHOLD = 0.1
 CANFD_JERK_LOWER_ACCEL_BP = [0.0, 0.8, 1.2, 1.5, 2.0, 2.5, 3.2]
 CANFD_JERK_LOWER_LIMIT_V = [1.2, 1.2, 1.2, 1.7, 3.0, 3.3, 3.7]
 
-CC_ONLY_CANCEL_FRAMES = int(0.3 / DT_CTRL)  # about one human press of the wheel CANCEL button
+CC_ONLY_PRESS_FRAMES = int(0.3 / DT_CTRL)  # about one human press of a wheel cruise button
+CC_ONLY_RESUME_LOCKOUT_FRAMES = int(2.0 / DT_CTRL)  # cruise must stay off this long before a remote RES
 
 
-class CcOnlyRemoteCancel:
-  """CC-only cars have no SCC cancel path. A Bluetooth remote cancel presses CLU11 CANCEL like the
-  wheel button for a short window, only while the factory cruise lamp shows cruise engaged."""
+class CcOnlyRemoteButtons:
+  """CC-only cars have no SCC button path. Bluetooth remote requests press a CLU11 cruise button like
+  the wheel does, for one short press decided by the factory cruise lamp:
+    cancel: CANCEL while cruise is engaged
+    toggle: CANCEL while engaged, otherwise RES once cruise has stayed off for the lockout
+  A press stops as soon as the lamp shows it took effect. Brake, auto hold or the parking brake abort it
+  and restart the lockout, so a resume never follows a cancel or a brake press within two seconds."""
   def __init__(self):
+    self.button = Buttons.NONE
     self.frames_left = 0
+    self.lamp_off_frames = CC_ONLY_RESUME_LOCKOUT_FRAMES
 
-  def update(self, activate_cruise: int, cruise_lamp_on: bool) -> bool:
-    if activate_cruise == REMOTE_CANCEL_REQUEST and self.frames_left == 0:
-      if cruise_lamp_on:
-        self.frames_left = CC_ONLY_CANCEL_FRAMES
-        print("[cc_only] remote cancel: sending CLU11 CANCEL")
-      else:
-        print("[cc_only] remote cancel ignored: factory cruise not engaged")
+  def abort(self):
+    if self.frames_left > 0:
+      print("[cc_only] remote press aborted by brake")
+    self.frames_left = 0
+    self.lamp_off_frames = 0
+
+  def _start(self, request: int, lamp_on: bool):
+    if lamp_on:
+      self.button, self.frames_left = Buttons.CANCEL, CC_ONLY_PRESS_FRAMES
+      print("[cc_only] remote cancel: sending CLU11 CANCEL")
+    elif request != REMOTE_CRUISE_TOGGLE_REQUEST:
+      print("[cc_only] remote cancel ignored: factory cruise not engaged")
+    elif self.lamp_off_frames < CC_ONLY_RESUME_LOCKOUT_FRAMES:
+      print(f"[cc_only] remote resume blocked: cruise off for only {self.lamp_off_frames * DT_CTRL:.1f}s")
+    else:
+      self.button, self.frames_left = Buttons.RES_ACCEL, CC_ONLY_PRESS_FRAMES
+      print("[cc_only] remote resume: sending CLU11 RES")
+
+  def update(self, request: int, lamp_on: bool) -> int:
+    self.lamp_off_frames = 0 if lamp_on else min(self.lamp_off_frames + 1, CC_ONLY_RESUME_LOCKOUT_FRAMES)
+    if request in (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST) and self.frames_left == 0:
+      self._start(request, lamp_on)
 
     if self.frames_left == 0:
-      return False
-    if not cruise_lamp_on:
-      print(f"[cc_only] factory cruise off after {CC_ONLY_CANCEL_FRAMES - self.frames_left} frames of CANCEL")
+      return Buttons.NONE
+    name = "RES" if self.button == Buttons.RES_ACCEL else "CANCEL"
+    if lamp_on == (self.button == Buttons.RES_ACCEL):
+      # CANCEL is done once the lamp goes off, RES once it comes on
+      print(f"[cc_only] factory cruise {'on' if lamp_on else 'off'} after {CC_ONLY_PRESS_FRAMES - self.frames_left} frames of {name}")
       self.frames_left = 0
-      return False
+      return Buttons.NONE
     self.frames_left -= 1
     if self.frames_left == 0:
-      print("[cc_only] CANCEL window ended with factory cruise still on")
-    return True
+      print(f"[cc_only] {name} window ended with factory cruise still {'on' if lamp_on else 'off'}")
+    return self.button
 
 
 vibrate_intervals = [
@@ -228,7 +253,7 @@ class CarController(CarControllerBase):
     self.soft_hold_mode = 2
 
     self.activateCruise = 0
-    self.cc_only_remote_cancel = CcOnlyRemoteCancel()
+    self.cc_only_remote_buttons = CcOnlyRemoteButtons()
     self.button_wait = 12
     self.cruise_buttons_msg_values = None
     self.cruise_buttons_msg_cnt = 0
@@ -666,15 +691,20 @@ class CarController(CarControllerBase):
   def create_button_messages(self, CC: structs.CarControl, CS: CarState, use_clu11: bool):
     can_sends = []
     if CS.out.brakePressed or CS.out.brakeHoldActive or CS.out.parkingBrake:
+      if use_clu11:
+        self.cc_only_remote_buttons.abort()  # a brake press drops any pending CC-only remote press
       return can_sends
     if use_clu11:
       if CS.clu11 is None:
         return can_sends
 
-      cc_only_cancel = bool(self.CP.flags & HyundaiFlags.CC_ONLY_CAR.value) and \
-                       self.cc_only_remote_cancel.update(CS.out.activateCruise, CS.out.cruiseLampOn)
-      if CC.cruiseControl.cancel or cc_only_cancel:
+      cc_only_button = Buttons.NONE
+      if self.CP.flags & HyundaiFlags.CC_ONLY_CAR.value:
+        cc_only_button = self.cc_only_remote_buttons.update(CS.out.activateCruise, CS.out.cruiseLampOn)
+      if CC.cruiseControl.cancel:
         can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.CANCEL, self.CP))
+      elif cc_only_button != Buttons.NONE:
+        can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, cc_only_button, self.CP))
       elif False: #CC.cruiseControl.resume:
         # send resume at a max freq of 10Hz
         if (self.frame - self.last_button_frame) * DT_CTRL > 0.1:
@@ -683,8 +713,8 @@ class CarController(CarControllerBase):
           if (self.frame - self.last_button_frame) * DT_CTRL >= 0.15:
             self.last_button_frame = self.frame
 
-      # never mix another button into a CC-only CANCEL press
-      if not cc_only_cancel and self.last_button_frame != self.frame:
+      # never mix another button into a CC-only remote press
+      if cc_only_button == Buttons.NONE and self.last_button_frame != self.frame:
         send_button = self.make_spam_button(CC, CS)
         if send_button > 0:
           can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, send_button, self.CP))

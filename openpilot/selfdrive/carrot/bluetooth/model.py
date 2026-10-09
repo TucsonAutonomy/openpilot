@@ -11,7 +11,7 @@ CONFIG_PATH = Path('/data/carrot/bluetooth.json')
 RUNTIME = Path('/dev/shm/carrot-bluetooth')
 REMOTE_BUTTONS = ('accelCruise', 'decelCruise', 'gapAdjustCruise', 'lfaButton', 'cancel')
 ACTIONS = ('none', *REMOTE_BUTTONS, *(button + 'Long' for button in REMOTE_BUTTONS),
-           'laneLeft', 'laneRight', 'paddleDecel', 'carrotCruise')
+           'laneLeft', 'laneRight', 'paddleDecel', 'carrotCruise', 'cruiseToggle')
 DOUBLE_SECONDS = 0.35
 LONG_SECONDS = 0.7
 REPEAT_SECONDS = 0.5
@@ -20,6 +20,9 @@ REPEAT_ACTIONS = ('accelCruise', 'decelCruise', 'accelCruiseLong', 'decelCruiseL
 LANE_ACTIONS = ('laneLeft', 'laneRight')
 COMMAND_TTL = 0.4
 BLUETOOTH_CANCEL = -3  # Explicit driver cancel, including PCM cruise; -1/-2 retain their existing meanings.
+# CC-only factory cruise cancel/resume toggle. Only produced for CC-only cars: other brands
+# treat any non-zero activateCruise as an engage request.
+BLUETOOTH_CRUISE_TOGGLE = -4
 DEFAULT_MAPPING = {'up': 'accelCruise', 'down': 'decelCruise', 'left': 'laneLeft', 'right': 'laneRight',
                    'center': 'paddleDecel', '1': 'gapAdjustCruise', '2': 'none'}
 MAC = re.compile(r'^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$')
