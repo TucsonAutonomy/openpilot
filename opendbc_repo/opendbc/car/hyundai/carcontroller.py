@@ -9,7 +9,7 @@ from opendbc.car.hyundai.carstate import CarState
 from opendbc.car.hyundai.stopping import CanfdStopping
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CAN_GEARS, HyundaiExtFlags, REMOTE_CANCEL_REQUEST, \
-                                       REMOTE_CRUISE_TOGGLE_REQUEST
+                                       REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.filter_simple import MyMovingAverage
@@ -51,20 +51,24 @@ CANFD_JERK_LOWER_ACCEL_BP = [0.0, 0.8, 1.2, 1.5, 2.0, 2.5, 3.2]
 CANFD_JERK_LOWER_LIMIT_V = [1.2, 1.2, 1.2, 1.7, 3.0, 3.3, 3.7]
 
 CC_ONLY_PRESS_FRAMES = int(0.3 / DT_CTRL)  # about one human press of a wheel cruise button
-CC_ONLY_RESUME_LOCKOUT_FRAMES = int(2.0 / DT_CTRL)  # cruise must stay off this long before a remote RES
+CC_ONLY_ENGAGE_LOCKOUT_FRAMES = int(2.0 / DT_CTRL)  # cruise must stay off this long before a remote RES/SET
+CC_ONLY_REMOTE_REQUESTS = (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST)
+CC_ONLY_BUTTON_NAMES = {Buttons.CANCEL: "CANCEL", Buttons.RES_ACCEL: "RES", Buttons.SET_DECEL: "SET"}
 
 
 class CcOnlyRemoteButtons:
   """CC-only cars have no SCC button path. Bluetooth remote requests press a CLU11 cruise button like
   the wheel does, for one short press decided by the factory cruise lamp:
     cancel: CANCEL while cruise is engaged
-    toggle: CANCEL while engaged, otherwise RES once cruise has stayed off for the lockout
-  A press stops as soon as the lamp shows it took effect. Brake, auto hold or the parking brake abort it
-  and restart the lockout, so a resume never follows a cancel or a brake press within two seconds."""
+    toggle: CANCEL while engaged, otherwise RES (resume the previous set speed)
+    set:    SET (engage at the current speed) while not engaged, nothing while engaged
+  RES and SET wait until cruise has stayed off for the lockout. A press stops as soon as the lamp shows it
+  took effect. Brake, auto hold or the parking brake abort it and restart the lockout, so the remote never
+  engages within two seconds of a cancel or a brake press."""
   def __init__(self):
     self.button = Buttons.NONE
     self.frames_left = 0
-    self.lamp_off_frames = CC_ONLY_RESUME_LOCKOUT_FRAMES
+    self.lamp_off_frames = CC_ONLY_ENGAGE_LOCKOUT_FRAMES
 
   def abort(self):
     if self.frames_left > 0:
@@ -73,27 +77,32 @@ class CcOnlyRemoteButtons:
     self.lamp_off_frames = 0
 
   def _start(self, request: int, lamp_on: bool):
-    if lamp_on:
+    if lamp_on and request == REMOTE_CRUISE_SET_REQUEST:
+      print("[cc_only] remote set ignored: factory cruise already engaged")
+    elif lamp_on:
       self.button, self.frames_left = Buttons.CANCEL, CC_ONLY_PRESS_FRAMES
       print("[cc_only] remote cancel: sending CLU11 CANCEL")
-    elif request != REMOTE_CRUISE_TOGGLE_REQUEST:
+    elif request == REMOTE_CANCEL_REQUEST:
       print("[cc_only] remote cancel ignored: factory cruise not engaged")
-    elif self.lamp_off_frames < CC_ONLY_RESUME_LOCKOUT_FRAMES:
-      print(f"[cc_only] remote resume blocked: cruise off for only {self.lamp_off_frames * DT_CTRL:.1f}s")
     else:
-      self.button, self.frames_left = Buttons.RES_ACCEL, CC_ONLY_PRESS_FRAMES
-      print("[cc_only] remote resume: sending CLU11 RES")
+      button = Buttons.SET_DECEL if request == REMOTE_CRUISE_SET_REQUEST else Buttons.RES_ACCEL
+      action = "set" if button == Buttons.SET_DECEL else "resume"
+      if self.lamp_off_frames < CC_ONLY_ENGAGE_LOCKOUT_FRAMES:
+        print(f"[cc_only] remote {action} blocked: cruise off for only {self.lamp_off_frames * DT_CTRL:.1f}s")
+      else:
+        self.button, self.frames_left = button, CC_ONLY_PRESS_FRAMES
+        print(f"[cc_only] remote {action}: sending CLU11 {CC_ONLY_BUTTON_NAMES[button]}")
 
   def update(self, request: int, lamp_on: bool) -> int:
-    self.lamp_off_frames = 0 if lamp_on else min(self.lamp_off_frames + 1, CC_ONLY_RESUME_LOCKOUT_FRAMES)
-    if request in (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST) and self.frames_left == 0:
+    self.lamp_off_frames = 0 if lamp_on else min(self.lamp_off_frames + 1, CC_ONLY_ENGAGE_LOCKOUT_FRAMES)
+    if request in CC_ONLY_REMOTE_REQUESTS and self.frames_left == 0:
       self._start(request, lamp_on)
 
     if self.frames_left == 0:
       return Buttons.NONE
-    name = "RES" if self.button == Buttons.RES_ACCEL else "CANCEL"
-    if lamp_on == (self.button == Buttons.RES_ACCEL):
-      # CANCEL is done once the lamp goes off, RES once it comes on
+    name = CC_ONLY_BUTTON_NAMES[self.button]
+    if lamp_on == (self.button != Buttons.CANCEL):
+      # CANCEL is done once the lamp goes off, RES/SET once it comes on
       print(f"[cc_only] factory cruise {'on' if lamp_on else 'off'} after {CC_ONLY_PRESS_FRAMES - self.frames_left} frames of {name}")
       self.frames_left = 0
       return Buttons.NONE

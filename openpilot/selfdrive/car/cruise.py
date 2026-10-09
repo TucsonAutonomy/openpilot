@@ -5,7 +5,7 @@ from openpilot.cereal import car
 from openpilot.common.constants import CV
 from openpilot.selfdrive.carrot.carrot_man_input import get_carrot_man
 from openpilot.selfdrive.carrot.cruise_gap import cruise_gap_levels, next_gap_personality, supported_gap_levels
-from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE, CommandReader, REMOTE_BUTTONS
+from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, CC_ONLY_REQUESTS, CommandReader, REMOTE_BUTTONS
 
 from opendbc.car import structs
 GearShifter = structs.CarState.GearShifter
@@ -736,11 +736,11 @@ class VCruiseCarrot:
       v_cruise_kph = updated_speed
     if remote in ('cancel', 'cancelLong'):
       self._cruise_control(BLUETOOTH_CANCEL, -1, 'Cruise off (Bluetooth cancel)', allow_cancel_state=True, manual=True)
-    elif remote == 'cruiseToggle':
-      # The car controller picks CANCEL or RES from the factory cruise lamp. Other brands would read
-      # any non-zero request as an engage request, so only CC-only cars may produce it.
+    elif remote in CC_ONLY_REQUESTS:
+      # The car controller presses the factory CANCEL/RES/SET button from the cruise lamp. Other brands
+      # would read any non-zero request as an engage request, so only CC-only cars may produce it.
       if self._cc_only:
-        self._cruise_control(BLUETOOTH_CRUISE_TOGGLE, -1, 'Cruise cancel/resume (Bluetooth)', allow_cancel_state=True, manual=True)
+        self._cruise_control(CC_ONLY_REQUESTS[remote], -1, f'Factory cruise button (Bluetooth {remote})', allow_cancel_state=True, manual=True)
     elif remote_enable and not CS.brakePressed and not CS.gasPressed and self._activate_cruise >= 0:
       self._cruise_control(1, -1, 'Cruise on (Bluetooth button)', manual=True)
       if self._activate_cruise > 0:

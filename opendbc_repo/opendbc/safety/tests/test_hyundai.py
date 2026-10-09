@@ -311,6 +311,22 @@ class TestHyundaiCcOnlyCancel(unittest.TestCase):
         self.assertFalse(self.safety.get_controls_allowed())
         self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
 
+  def test_set_follows_own_scc12_main_state(self):
+    # The remote "set at current speed" relies on this: there is no CC-only SET rule, but openpilot's
+    # minimal CC-only SCC12 reports ACCMode=1 while CRUISE main is on, which sets controls_allowed.
+    for safety_model in self.SAFETY_MODELS:
+      with self.subTest(safety_model=safety_model):
+        self._setup(safety_model, HyundaiSafetyFlags.CC_ONLY)
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
+        self.safety.safety_tx_hook(self._cc_only_scc12(main_on=False))
+        self.assertFalse(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
+        self.safety.safety_tx_hook(self._cc_only_scc12(main_on=True))
+        self.assertTrue(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
+
+  def _cc_only_scc12(self, main_on):
+    # same values as hyundaican.create_acc_commands_cc_only: zero acceleration, ACCMode follows CRUISE main
+    return self.packer.make_can_msg_panda("SCC12", 0, {"ACCMode": 1 if main_on else 0, "aReqRaw": 0.0, "aReqValue": 0.0})
+
   def test_lamp_ignored_without_cc_only(self):
     for safety_model in self.SAFETY_MODELS:
       with self.subTest(safety_model=safety_model):

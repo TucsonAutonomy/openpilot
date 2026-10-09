@@ -143,7 +143,7 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
 
 
 @pytest.mark.parametrize('pedal', ['none', 'gas', 'brake'])
-@pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle'])
+@pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle', 'cruiseSet'])
 def test_pedals_only_let_short_lane_change_through(tmp_path, monkeypatch, pedal, action):
   mac = '00:11:22:33:44:55'
   settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105': action}}}}

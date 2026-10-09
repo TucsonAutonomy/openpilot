@@ -5,7 +5,7 @@ import pytest
 from openpilot.cereal import car
 from openpilot.selfdrive.car.cruise import ButtonType, VCruiseCarrot, is_hold_interlock_active
 from openpilot.selfdrive.carrot.cruise_gap import cruise_gap_levels
-from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE
+from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_TOGGLE
 
 
 def make_cruise_helper(button_kph, cruise_button_mode, carrot_cruise_active, cruise_enabled,
@@ -711,13 +711,14 @@ def test_gap_long_press_still_changes_driving_mode():
   assert values == {"MyDrivingMode": 1, "LongitudinalPersonality": 1}
 
 
+@pytest.mark.parametrize('action, request_value', [('cruiseToggle', BLUETOOTH_CRUISE_TOGGLE), ('cruiseSet', BLUETOOTH_CRUISE_SET)])
 @pytest.mark.parametrize('cc_only', [True, False])
-def test_remote_cruise_toggle_is_a_cc_only_button_request(cc_only):
-  helper, CS, CC = make_remote_helper('cruiseToggle')
+def test_remote_factory_cruise_buttons_are_cc_only_requests(cc_only, action, request_value):
+  helper, CS, CC = make_remote_helper(action)
   helper._cc_only = cc_only
   assert helper._update_cruise_buttons(CS, CC, 80) == 80
   # Other brands read any non-zero activateCruise as an engage request.
-  assert helper._activate_cruise == (BLUETOOTH_CRUISE_TOGGLE if cc_only else 0)
+  assert helper._activate_cruise == (request_value if cc_only else 0)
   # It only asks the car controller for a factory button press: carrot's own cruise state is untouched.
   assert not helper._lat_enabled
   assert not helper._cruise_cancel_state
@@ -725,9 +726,10 @@ def test_remote_cruise_toggle_is_a_cc_only_button_request(cc_only):
   assert not CS.buttonEvents
 
 
+@pytest.mark.parametrize('action', ['cruiseToggle', 'cruiseSet'])
 @pytest.mark.parametrize('block', ['can', 'available', 'gear', 'button'])
-def test_remote_cruise_toggle_keeps_the_remote_gate(block):
-  helper, CS, CC = make_remote_helper('cruiseToggle')
+def test_remote_factory_cruise_buttons_keep_the_remote_gate(block, action):
+  helper, CS, CC = make_remote_helper(action)
   helper._cc_only = True
   CS.canValid = block != 'can'
   CS.cruiseState.available = block != 'available'
@@ -738,10 +740,11 @@ def test_remote_cruise_toggle_keeps_the_remote_gate(block):
   assert helper._activate_cruise == 0
 
 
-def test_remote_cruise_toggle_request_creates_no_engagement_events():
+@pytest.mark.parametrize('request_value', [BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET])
+def test_remote_factory_cruise_requests_create_no_engagement_events(request_value):
   from openpilot.selfdrive.car.car_specific import CarSpecificEvents
   from openpilot.selfdrive.selfdrived.events import EventName
-  CS = car.CarState(activateCruise=BLUETOOTH_CRUISE_TOGGLE)
+  CS = car.CarState(activateCruise=request_value)
   car_events = CarSpecificEvents(SimpleNamespace(pcmCruise=True, openpilotLongitudinalControl=False))
   events = car_events.create_common_events(CS, car.CarState(), pcm_enable=False)
   assert EventName.buttonCancel not in events.names

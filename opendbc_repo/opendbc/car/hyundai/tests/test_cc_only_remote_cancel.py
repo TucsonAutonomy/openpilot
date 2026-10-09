@@ -3,18 +3,19 @@ from types import SimpleNamespace
 import pytest
 
 from opendbc.can import CANPacker
-from opendbc.car.hyundai.carcontroller import CC_ONLY_PRESS_FRAMES, CC_ONLY_RESUME_LOCKOUT_FRAMES, CarController, CcOnlyRemoteButtons
-from opendbc.car.hyundai.values import Buttons, HyundaiFlags, REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
-from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE
+from opendbc.car.hyundai.carcontroller import CC_ONLY_ENGAGE_LOCKOUT_FRAMES, CC_ONLY_PRESS_FRAMES, CarController, CcOnlyRemoteButtons
+from opendbc.car.hyundai.values import Buttons, HyundaiFlags, REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
+from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_TOGGLE
 
 CLU11_SIGNALS = ("CF_Clu_CruiseSwState", "CF_Clu_CruiseSwMain", "CF_Clu_SldMainSW", "CF_Clu_ParityBit1", "CF_Clu_VanzDecimal",
                  "CF_Clu_Vanz", "CF_Clu_SPEED_UNIT", "CF_Clu_DetentOut", "CF_Clu_RheostatLevel", "CF_Clu_CluInfo", "CF_Clu_AmpInfo",
                  "CF_Clu_AliveCnt1")
-NONE, RES, CANCEL = Buttons.NONE, Buttons.RES_ACCEL, Buttons.CANCEL
+NONE, RES, SET, CANCEL = Buttons.NONE, Buttons.RES_ACCEL, Buttons.SET_DECEL, Buttons.CANCEL
 
 
 def test_requests_match_bluetooth_actions():
-  assert (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST) == (BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE)
+  assert (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST) == \
+         (BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET)
 
 
 def _press(buttons, request, lamp_on, frames):
@@ -48,7 +49,7 @@ def test_press_stops_as_soon_as_the_lamp_shows_the_effect(button, lamp_before, l
 def test_resume_locked_out_after_cruise_turns_off():
   buttons = CcOnlyRemoteButtons()
   buttons.update(0, True)  # cruise engaged, e.g. just cancelled from the wheel
-  for _ in range(CC_ONLY_RESUME_LOCKOUT_FRAMES - 2):
+  for _ in range(CC_ONLY_ENGAGE_LOCKOUT_FRAMES - 2):
     assert buttons.update(0, False) == NONE
   assert buttons.update(REMOTE_CRUISE_TOGGLE_REQUEST, False) == NONE  # lamp off for 1.99 s
   assert buttons.update(REMOTE_CRUISE_TOGGLE_REQUEST, False) == RES  # lamp off for 2.00 s
@@ -76,6 +77,37 @@ def test_other_requests_never_press(request_value):
   assert buttons.update(request_value, False) == NONE
 
 
+def test_set_engages_at_current_speed_when_cruise_has_been_off():
+  assert _press(CcOnlyRemoteButtons(), REMOTE_CRUISE_SET_REQUEST, False, CC_ONLY_PRESS_FRAMES + 20) == \
+         [SET] * CC_ONLY_PRESS_FRAMES + [NONE] * 20
+
+
+def test_set_does_nothing_while_cruise_is_engaged():
+  # The wheel SET would lower the set speed here; the remote set only starts cruise.
+  assert _press(CcOnlyRemoteButtons(), REMOTE_CRUISE_SET_REQUEST, True, 20) == [NONE] * 20
+
+
+def test_set_stops_as_soon_as_cruise_engages():
+  buttons = CcOnlyRemoteButtons()
+  assert buttons.update(REMOTE_CRUISE_SET_REQUEST, False) == SET
+  assert buttons.update(0, False) == SET
+  assert buttons.update(0, True) == NONE
+  assert buttons.update(0, False) == NONE
+
+
+@pytest.mark.parametrize("request_value, button", [(REMOTE_CRUISE_SET_REQUEST, SET), (REMOTE_CRUISE_TOGGLE_REQUEST, RES)])
+def test_engage_requests_share_the_lockout_and_brake_abort(request_value, button):
+  buttons = CcOnlyRemoteButtons()
+  buttons.update(0, True)
+  assert buttons.update(request_value, False) == NONE  # cruise just turned off
+  for _ in range(CC_ONLY_ENGAGE_LOCKOUT_FRAMES):
+    buttons.update(0, False)
+  assert buttons.update(request_value, False) == button
+  buttons.abort()
+  assert buttons.update(0, False) == NONE
+  assert buttons.update(request_value, False) == NONE
+
+
 def _button_messages(cc_only, activate_cruise, lamp_on, brake=False):
   packer = CANPacker("hyundai_kia_generic")
   spam_calls = []
@@ -96,6 +128,7 @@ def _button_messages(cc_only, activate_cruise, lamp_on, brake=False):
   (REMOTE_CANCEL_REQUEST, True, CANCEL),
   (REMOTE_CRUISE_TOGGLE_REQUEST, True, CANCEL),
   (REMOTE_CRUISE_TOGGLE_REQUEST, False, RES),
+  (REMOTE_CRUISE_SET_REQUEST, False, SET),
 ])
 def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button):
   sends, spam_calls = _button_messages(cc_only=True, activate_cruise=request_value, lamp_on=lamp_on)
@@ -106,7 +139,7 @@ def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button):
   assert spam_calls == []
 
 
-@pytest.mark.parametrize("request_value", [REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST])
+@pytest.mark.parametrize("request_value", [REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST])
 @pytest.mark.parametrize("kwargs", [{"cc_only": False, "lamp_on": True}, {"cc_only": False, "lamp_on": False},
                                     {"cc_only": True, "lamp_on": True, "brake": True},
                                     {"cc_only": True, "lamp_on": False, "brake": True}])
