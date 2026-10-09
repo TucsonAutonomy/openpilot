@@ -9,7 +9,7 @@ import time
 import uuid
 
 from openpilot.cereal import messaging
-from openpilot.selfdrive.carrot.bluetooth.model import LANE_ACTIONS, RUNTIME, CommandWriter, Decoder, address, atomic_json, config, read_json
+from openpilot.selfdrive.carrot.bluetooth.model import CC_ONLY_REQUESTS, LANE_ACTIONS, RUNTIME, CommandWriter, Decoder, address, atomic_json, config, read_json
 
 EVENT = struct.Struct('@llHHi')
 EVIOCGRAB = 0x40044590
@@ -80,15 +80,16 @@ def main():
     testing = learning.get('address') == mac
     held = decoder.active_longs
     if hold_blocked and not testing:
-      # Pedals alone only spare short/double lane-change presses; everything else still cancels all holds.
-      keep = () if hard_blocked else {key.split('@')[0] for key, action in device['mapping'].items()
-                                      if action in LANE_ACTIONS and not key.endswith('@long')}
+      # A pedal alone only spares short/double presses of spared actions; everything else still cancels all holds.
+      keep = {key.split('@')[0] for key, action in device['mapping'].items() if action in spared and not key.endswith('@long')}
       decoder.cancel_holds(keep)
     for token in tokens:
       action = device['mapping'].get(token, 'none')
       reason = 'test' if testing else 'inactive'
       emitted = False
-      if not testing and device['enabled'] and started and car_ok and not (token in held and hold_blocked) and now - last_fire.get((mac, token), 0) >= 0.18:
+      # A kept key may carry other actions on its other gestures; those stay blocked.
+      blocked = hold_blocked and (token in held or action not in spared)
+      if not testing and device['enabled'] and started and car_ok and not blocked and now - last_fire.get((mac, token), 0) >= 0.18:
         if action != 'none':
           writer.send(mac, action, now, hold=f'{path}:{token}' if token in held else None, repeat=token in decoder.repeated)
           last_fire[mac, token] = now
@@ -109,6 +110,9 @@ def main():
       hard_blocked = (not started or not car_ok or not sm.alive['selfdriveState'] or
                       cs.gearShifter != 'drive' or bool(cs.buttonEvents) or (previously_enabled and not enabled))
       hold_blocked = hard_blocked or cs.gasPressed or cs.brakePressed
+      # Either pedal spares lane changes. The accelerator alone also spares the CC-only factory cruise
+      # buttons; the car controller drops those while braking anyway.
+      spared = () if hard_blocked else LANE_ACTIONS if cs.brakePressed else (*LANE_ACTIONS, *CC_ONLY_REQUESTS)
       previously_enabled = enabled
       stationary = (sm.alive['deviceState'] and not sm['deviceState'].started) or (
         car_ok and abs(sm['carState'].vEgo) < 0.1 and sm.alive['selfdriveState'] and not sm['selfdriveState'].enabled)

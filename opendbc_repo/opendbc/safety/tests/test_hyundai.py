@@ -4,6 +4,7 @@ import unittest
 
 from opendbc.car.hyundai.values import HyundaiSafetyFlags
 from opendbc.car.structs import CarParams
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerPanda
@@ -272,7 +273,7 @@ class TestHyundaiLongitudinalSafetyCameraSCC(HyundaiLongitudinalBase, TestHyunda
 class TestHyundaiCcOnlyCancel(unittest.TestCase):
   """carrot: CC-only cars have no SCC12, so CLU11 CANCEL is gated by the factory cruise lamp (EMS16)."""
   SAFETY_MODELS = (CarParams.SafetyModel.hyundai, CarParams.SafetyModel.hyundaiLegacy)
-  CANCEL, SET_DECEL = 4, 2
+  CANCEL, SET_DECEL, RES_ACCEL = 4, 2, 1
 
   def _setup(self, safety_model, param):
     self.packer = CANPackerPanda("hyundai_kia_generic")
@@ -281,16 +282,16 @@ class TestHyundaiCcOnlyCancel(unittest.TestCase):
     self.safety.init_tests()
     self.cnt = 0
 
-  def _cruise_lamp_msg(self, lamp_on):
-    values = {"CRUISE_LAMP_S": lamp_on, "AliveCounter": self.cnt % 4}
+  def _cruise_lamp_msg(self, lamp_on, gas=0):
+    values = {"CRUISE_LAMP_S": lamp_on, "CF_Ems_AclAct": gas, "AliveCounter": self.cnt % 4}
     self.cnt += 1
     return self.packer.make_can_msg_panda("EMS16", 0, values, fix_checksum=checksum)
 
   def _button_msg(self, button):
     return self.packer.make_can_msg_panda("CLU11", 0, {"CF_Clu_CruiseSwState": button})
 
-  def _set_lamp(self, lamp_on):
-    self.assertTrue(self.safety.safety_rx_hook(self._cruise_lamp_msg(lamp_on)))
+  def _set_lamp(self, lamp_on, gas=0):
+    self.assertTrue(self.safety.safety_rx_hook(self._cruise_lamp_msg(lamp_on, gas)))
 
   def test_cancel_follows_cruise_lamp(self):
     for safety_model in self.SAFETY_MODELS:
@@ -326,6 +327,23 @@ class TestHyundaiCcOnlyCancel(unittest.TestCase):
   def _cc_only_scc12(self, main_on):
     # same values as hyundaican.create_acc_commands_cc_only: zero acceleration, ACCMode follows CRUISE main
     return self.packer.make_can_msg_panda("SCC12", 0, {"ACCMode": 1 if main_on else 0, "aReqRaw": 0.0, "aReqValue": 0.0})
+
+  def test_buttons_allowed_while_accelerating(self):
+    # The remote cruise cancel/resume and set also act under the accelerator. A gas press may clear
+    # controls_allowed (disengage on accelerator), but the next CC-only SCC12 sets it again.
+    for safety_model in self.SAFETY_MODELS:
+      for alternative_experience in (ALTERNATIVE_EXPERIENCE.DEFAULT, ALTERNATIVE_EXPERIENCE.DISABLE_DISENGAGE_ON_GAS):
+        with self.subTest(safety_model=safety_model, alternative_experience=alternative_experience):
+          self._setup(safety_model, HyundaiSafetyFlags.CC_ONLY)
+          self.safety.set_alternative_experience(alternative_experience)
+          self.safety.safety_tx_hook(self._cc_only_scc12(main_on=True))
+          for lamp_on in (True, False):
+            self._set_lamp(lamp_on, gas=1)
+            self.safety.safety_tx_hook(self._cc_only_scc12(main_on=True))
+            self.assertTrue(self.safety.get_gas_pressed_prev())
+            self.assertEqual(lamp_on, self.safety.safety_tx_hook(self._button_msg(self.CANCEL)))
+            self.assertTrue(self.safety.safety_tx_hook(self._button_msg(self.RES_ACCEL)))
+            self.assertTrue(self.safety.safety_tx_hook(self._button_msg(self.SET_DECEL)))
 
   def test_lamp_ignored_without_cc_only(self):
     for safety_model in self.SAFETY_MODELS:

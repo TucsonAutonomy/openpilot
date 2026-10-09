@@ -108,7 +108,7 @@ def test_engage_requests_share_the_lockout_and_brake_abort(request_value, button
   assert buttons.update(request_value, False) == NONE
 
 
-def _button_messages(cc_only, activate_cruise, lamp_on, brake=False):
+def _button_messages(cc_only, activate_cruise, lamp_on, brake=False, gas=False):
   packer = CANPacker("hyundai_kia_generic")
   spam_calls = []
   controller = SimpleNamespace(
@@ -117,7 +117,7 @@ def _button_messages(cc_only, activate_cruise, lamp_on, brake=False):
     make_spam_button=lambda CC, CS: spam_calls.append(1) or 0,
   )
   CS = SimpleNamespace(clu11=dict.fromkeys(CLU11_SIGNALS, 0),
-                       out=SimpleNamespace(brakePressed=brake, brakeHoldActive=False, parkingBrake=False,
+                       out=SimpleNamespace(brakePressed=brake, gasPressed=gas, brakeHoldActive=False, parkingBrake=False,
                                            activateCruise=activate_cruise, cruiseLampOn=lamp_on))
   CC = SimpleNamespace(cruiseControl=SimpleNamespace(cancel=False, resume=False))
   sends = CarController.create_button_messages(controller, CC, CS, use_clu11=True)
@@ -130,8 +130,9 @@ def _button_messages(cc_only, activate_cruise, lamp_on, brake=False):
   (REMOTE_CRUISE_TOGGLE_REQUEST, False, RES),
   (REMOTE_CRUISE_SET_REQUEST, False, SET),
 ])
-def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button):
-  sends, spam_calls = _button_messages(cc_only=True, activate_cruise=request_value, lamp_on=lamp_on)
+@pytest.mark.parametrize("gas", [False, True])  # unlike the brake, the accelerator never stops a press
+def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button, gas):
+  sends, spam_calls = _button_messages(cc_only=True, activate_cruise=request_value, lamp_on=lamp_on, gas=gas)
   assert len(sends) == 1
   addr, dat, bus = sends[0]
   # panda reads the CLU11 button from the low 3 bits of byte 0

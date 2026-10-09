@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip('fcntl')
 from openpilot.selfdrive.carrot.bluetooth import daemon
-from openpilot.selfdrive.carrot.bluetooth.model import CommandReader, CommandWriter
+from openpilot.selfdrive.carrot.bluetooth.model import CC_ONLY_REQUESTS, CommandReader, CommandWriter
 
 
 @pytest.mark.parametrize('learning', [False, True])
@@ -142,11 +142,15 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
   assert writer.events['cruise'] == []
 
 
-@pytest.mark.parametrize('pedal', ['none', 'gas', 'brake'])
+@pytest.mark.parametrize('pedal', ['none', 'gas', 'brake', 'both'])
 @pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle', 'cruiseSet'])
-def test_pedals_only_let_short_lane_change_through(tmp_path, monkeypatch, pedal, action):
+@pytest.mark.parametrize('gesture', ['single', 'double', 'double+lane'])
+def test_pedals_only_spare_lane_changes_and_cc_only_cruise_buttons_on_gas(tmp_path, monkeypatch, pedal, action, gesture):
   mac = '00:11:22:33:44:55'
-  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105': action}}}}
+  mapping = {'key:105': action} if gesture == 'single' else {'key:105@double': action}
+  if gesture == 'double+lane':
+    mapping['key:105'] = 'laneRight'  # keeps the key's hold alive under either pedal
+  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': mapping}}}
   clock = [10.0]
   sent = []
 
@@ -167,15 +171,15 @@ def test_pedals_only_let_short_lane_change_through(tmp_path, monkeypatch, pedal,
     def update(self, _):
       clock[0] += .01
 
-  state = State(carState=SimpleNamespace(canValid=True, vEgo=20, brakePressed=pedal == 'brake', gasPressed=pedal == 'gas',
+  state = State(carState=SimpleNamespace(canValid=True, vEgo=20, brakePressed=pedal in ('brake', 'both'), gasPressed=pedal in ('gas', 'both'),
                                        gearShifter='drive', buttonEvents=[]), deviceState=SimpleNamespace(started=True),
                 selfdriveState=SimpleNamespace(enabled=False))
   monkeypatch.setattr(daemon.messaging, 'SubMaster', lambda _: state)
   fd, output = os.pipe()
   monkeypatch.setattr(daemon, 'devices', lambda: {'input-0': (mac, 'remote')})
   monkeypatch.setattr(daemon, 'open_input', lambda _: fd)
-  os.write(output, b''.join(daemon.EVENT.pack(10, 5000, *event) for event in
-                            [(1, 105, 1), (0, 0, 0), (1, 105, 0), (0, 0, 0)]))
+  press = [(1, 105, 1), (0, 0, 0), (1, 105, 0), (0, 0, 0)]
+  os.write(output, b''.join(daemon.EVENT.pack(10, 5000, *event) for event in press * (1 if gesture == 'single' else 2)))
   os.close(output)
   calls = [0]
 
@@ -191,5 +195,60 @@ def test_pedals_only_let_short_lane_change_through(tmp_path, monkeypatch, pedal,
   monkeypatch.setattr(daemon.select, 'select', select)
   with pytest.raises(Done):
     daemon.main()
-  expected = pedal == 'none' or action == 'laneLeft'
+  expected = pedal == 'none' or action == 'laneLeft' or (pedal == 'gas' and action in CC_ONLY_REQUESTS)
   assert sent == ([action] if expected else [])
+
+
+@pytest.mark.parametrize('pedal', ['none', 'gas'])
+@pytest.mark.parametrize('action', ['laneLeft', 'cruiseToggle', 'cruiseSet'])
+def test_pedals_still_cancel_long_presses(tmp_path, monkeypatch, pedal, action):
+  mac = '00:11:22:33:44:55'
+  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105@long': action}}}}
+  clock = [10.0]
+  sent = []
+
+  class Writer(CommandWriter):
+    def send(self, *args, **kwargs):
+      sent.append(args[1])
+      super().send(*args, **kwargs)
+
+  monkeypatch.setattr(daemon, 'RUNTIME', tmp_path)
+  monkeypatch.setattr(daemon, 'config', lambda: settings)
+  monkeypatch.setattr(daemon, 'CommandWriter', lambda: Writer(tmp_path))
+  monkeypatch.setattr(daemon.time, 'monotonic', lambda: clock[0])
+  step = [-1]
+
+  class State(dict):
+    alive = dict.fromkeys(('carState', 'deviceState', 'selfdriveState'), True)
+    valid = {'carState': True}
+
+    def update(self, _):
+      step[0] += 1
+      clock[0] = 10 + 0.75 * step[0]  # the key stays down past the long-press time
+
+  state = State(carState=SimpleNamespace(canValid=True, vEgo=20, brakePressed=False, gasPressed=pedal == 'gas',
+                                       gearShifter='drive', buttonEvents=[]), deviceState=SimpleNamespace(started=True),
+                selfdriveState=SimpleNamespace(enabled=False))
+  monkeypatch.setattr(daemon.messaging, 'SubMaster', lambda _: state)
+  fd, output = os.pipe()
+  monkeypatch.setattr(daemon, 'devices', lambda: {'input-0': (mac, 'remote')})
+  monkeypatch.setattr(daemon, 'open_input', lambda _: fd)
+
+  class Done(Exception):
+    pass
+
+  def select(fds, *_):
+    if step[0] >= 2:
+      raise Done
+    if step[0] == 0:
+      os.write(output, b''.join(daemon.EVENT.pack(10, 0, *event) for event in [(1, 105, 1), (0, 0, 0)]))
+      return fds, [], []
+    return [], [], []
+
+  monkeypatch.setattr(daemon.select, 'select', select)
+  try:
+    with pytest.raises(Done):
+      daemon.main()
+  finally:
+    os.close(output)
+  assert sent == ([action] if pedal == 'none' else [])

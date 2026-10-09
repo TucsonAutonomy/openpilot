@@ -713,9 +713,11 @@ def test_gap_long_press_still_changes_driving_mode():
 
 @pytest.mark.parametrize('action, request_value', [('cruiseToggle', BLUETOOTH_CRUISE_TOGGLE), ('cruiseSet', BLUETOOTH_CRUISE_SET)])
 @pytest.mark.parametrize('cc_only', [True, False])
-def test_remote_factory_cruise_buttons_are_cc_only_requests(cc_only, action, request_value):
+@pytest.mark.parametrize('gas', [False, True])
+def test_remote_factory_cruise_buttons_are_cc_only_requests(cc_only, action, request_value, gas):
   helper, CS, CC = make_remote_helper(action)
   helper._cc_only = cc_only
+  CS.gasPressed = gas
   assert helper._update_cruise_buttons(CS, CC, 80) == 80
   # Other brands read any non-zero activateCruise as an engage request.
   assert helper._activate_cruise == (request_value if cc_only else 0)
