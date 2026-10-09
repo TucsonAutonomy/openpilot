@@ -17,6 +17,7 @@ def make_cruise_helper(button_kph, cruise_button_mode, carrot_cruise_active, cru
   helper._update_cruise_state = lambda CS, CC, v_cruise_kph: v_cruise_kph
   helper._add_log = lambda log: None
 
+  helper._cc_only = False
   helper._paddle_decel_active = False
   helper._activate_cruise = 0
   helper._cancel_timer = 0
