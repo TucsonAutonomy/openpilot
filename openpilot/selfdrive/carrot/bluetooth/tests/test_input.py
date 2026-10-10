@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from openpilot.selfdrive.carrot.bluetooth.model import Clicks, CommandReader, CommandWriter, Decoder, DEFAULT_MAPPING, atomic_json, validate_config
+from openpilot.selfdrive.carrot.bluetooth.model import (Clicks, CommandReader, CommandWriter, Decoder, DEFAULT_MAPPING, atomic_json,
+                                                         is_touch_token, validate_config)
 from openpilot.selfdrive.carrot.bluetooth.bluez import Bluez
 
 
@@ -194,6 +195,24 @@ def test_touch_hold_starts_once_and_direction_change_cannot_retrigger(cancel_bef
   assert decoder.flush(3) == []
   decoder.feed(1, 330, 0, 3.1)
   assert decoder.feed(0, 0, 0, 3.1) == []
+
+
+@pytest.mark.parametrize('keep_touch', [False, True])
+def test_cancelled_touch_cannot_become_a_swipe_unless_the_touch_is_kept(keep_touch):
+  decoder = Decoder(mapping={'swipe:y+': 'laneLeft'})
+  for event in [(3, 0, 500), (3, 1, 300), (1, 330, 1), (0, 0, 0)]:
+    decoder.feed(*event, 1)
+  # still a tap here, so keeping only the swipe token cannot spare it
+  decoder.cancel_holds({'swipe:y+'}, keep_touch=keep_touch)
+  for event in [(3, 1, 500), (0, 0, 0), (1, 330, 0)]:
+    decoder.feed(*event, 1.1)
+  assert decoder.feed(0, 0, 0, 1.1) == (['swipe:y+'] if keep_touch else [])
+
+
+@pytest.mark.parametrize('token, touch', [('key:105', False), ('1', False), ('swipe:y+', True), ('tap:500:300', True),
+                                          ('up', True), ('center', True), ('2', True)])
+def test_touch_tokens(token, touch):
+  assert is_touch_token(token) == touch
 
 
 def test_release_cancels_unconsumed_hold_events_but_preserves_other_device(tmp_path):

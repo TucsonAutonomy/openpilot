@@ -31,6 +31,11 @@ MAC = re.compile(r'^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$')
 TOKEN = re.compile(r'^(?:up|down|left|right|center|1|2|key:[0-9]{1,4}|swipe:[xy][+-]|tap:[0-9]{1,5}:[0-9]{1,5})(?:@double|@long)?$')
 
 
+def is_touch_token(token):
+  """Touch gestures only settle on release (a swipe starts out as a tap); key tokens are known from the press."""
+  return not token.startswith('key:') and token != '1'
+
+
 def address(value):
   value = str(value).upper()
   if not MAC.fullmatch(value):
@@ -150,9 +155,9 @@ class Decoder:
   def active_longs(self):
     return {hold['token'] + '@long' for hold in self.holds.values() if hold['fired'] and not hold['expired']}
 
-  def cancel_holds(self, keep=()):
-    for hold in self.holds.values():
-      if hold['token'] not in keep:
+  def cancel_holds(self, keep=(), keep_touch=False):
+    for source, hold in self.holds.items():
+      if hold['token'] not in keep and not (keep_touch and source == 'touch'):
         hold['expired'] = True
 
   def hold(self, source, token, started):

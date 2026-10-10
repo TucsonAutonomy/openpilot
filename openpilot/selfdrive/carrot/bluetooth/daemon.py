@@ -9,7 +9,8 @@ import time
 import uuid
 
 from openpilot.cereal import messaging
-from openpilot.selfdrive.carrot.bluetooth.model import CC_ONLY_REQUESTS, LANE_ACTIONS, RUNTIME, CommandWriter, Decoder, address, atomic_json, config, read_json
+from openpilot.selfdrive.carrot.bluetooth.model import (CC_ONLY_REQUESTS, LANE_ACTIONS, RUNTIME, CommandWriter, Decoder, address, atomic_json,
+                                                         config, is_touch_token, read_json)
 
 EVENT = struct.Struct('@llHHi')
 EVIOCGRAB = 0x40044590
@@ -82,7 +83,9 @@ def main():
     if hold_blocked and not testing:
       # A pedal alone only spares short/double presses of spared actions; everything else still cancels all holds.
       keep = {key.split('@')[0] for key, action in device['mapping'].items() if action in spared and not key.endswith('@long')}
-      decoder.cancel_holds(keep)
+      # A touch only shows its final token on release (a swipe starts out as a tap), so a spared touch gesture
+      # keeps the whole touch alive; the release below still sends nothing but spared actions.
+      decoder.cancel_holds(keep, keep_touch=any(is_touch_token(token) for token in keep))
     for token in tokens:
       action = device['mapping'].get(token, 'none')
       reason = 'test' if testing else 'inactive'

@@ -144,12 +144,13 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
 
 @pytest.mark.parametrize('pedal', ['none', 'gas', 'brake', 'both'])
 @pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle', 'cruiseSet'])
-@pytest.mark.parametrize('gesture', ['single', 'double', 'double+lane'])
+@pytest.mark.parametrize('gesture', ['single', 'double', 'double+lane', 'swipe', 'swipe+lane'])
 def test_pedals_only_spare_lane_changes_and_cc_only_cruise_buttons_on_gas(tmp_path, monkeypatch, pedal, action, gesture):
   mac = '00:11:22:33:44:55'
-  mapping = {'key:105': action} if gesture == 'single' else {'key:105@double': action}
-  if gesture == 'double+lane':
-    mapping['key:105'] = 'laneRight'  # keeps the key's hold alive under either pedal
+  # '+lane' keeps the key or touch alive under either pedal through its lane change
+  mapping = {'single': {'key:105': action}, 'double': {'key:105@double': action},
+             'double+lane': {'key:105@double': action, 'key:105': 'laneRight'},
+             'swipe': {'swipe:y+': action}, 'swipe+lane': {'swipe:y+': action, 'swipe:y-': 'laneRight'}}[gesture]
   settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': mapping}}}
   clock = [10.0]
   sent = []
@@ -179,7 +180,10 @@ def test_pedals_only_spare_lane_changes_and_cc_only_cruise_buttons_on_gas(tmp_pa
   monkeypatch.setattr(daemon, 'devices', lambda: {'input-0': (mac, 'remote')})
   monkeypatch.setattr(daemon, 'open_input', lambda _: fd)
   press = [(1, 105, 1), (0, 0, 0), (1, 105, 0), (0, 0, 0)]
-  os.write(output, b''.join(daemon.EVENT.pack(10, 5000, *event) for event in press * (1 if gesture == 'single' else 2)))
+  # a swipe starts out as a tap and only becomes a swipe once it has moved; some remotes send a button press this way
+  swipe = [(3, 0, 500), (3, 1, 300), (1, 330, 1), (0, 0, 0), (3, 1, 400), (0, 0, 0), (3, 1, 500), (0, 0, 0), (1, 330, 0), (0, 0, 0)]
+  events = swipe if gesture.startswith('swipe') else press * (1 if gesture == 'single' else 2)
+  os.write(output, b''.join(daemon.EVENT.pack(10, 5000, *event) for event in events))
   os.close(output)
   calls = [0]
 
@@ -201,9 +205,12 @@ def test_pedals_only_spare_lane_changes_and_cc_only_cruise_buttons_on_gas(tmp_pa
 
 @pytest.mark.parametrize('pedal', ['none', 'gas'])
 @pytest.mark.parametrize('action', ['laneLeft', 'cruiseToggle', 'cruiseSet'])
-def test_pedals_still_cancel_long_presses(tmp_path, monkeypatch, pedal, action):
+@pytest.mark.parametrize('source', ['key', 'touch'])
+def test_pedals_still_cancel_long_presses(tmp_path, monkeypatch, pedal, action, source):
   mac = '00:11:22:33:44:55'
-  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': {'key:105@long': action}}}}
+  # the spared swipe keeps the touch itself alive under the pedal, so only the long-press rule stops it
+  mapping = {'key:105@long': action} if source == 'key' else {'tap:500:300@long': action, 'swipe:y+': 'laneLeft'}
+  settings = {'devices': {mac: {'profile': 'generic', 'enabled': True, 'mapping': mapping}}}
   clock = [10.0]
   sent = []
 
@@ -241,7 +248,8 @@ def test_pedals_still_cancel_long_presses(tmp_path, monkeypatch, pedal, action):
     if step[0] >= 2:
       raise Done
     if step[0] == 0:
-      os.write(output, b''.join(daemon.EVENT.pack(10, 0, *event) for event in [(1, 105, 1), (0, 0, 0)]))
+      down = [(1, 105, 1), (0, 0, 0)] if source == 'key' else [(3, 0, 500), (3, 1, 300), (1, 330, 1), (0, 0, 0)]
+      os.write(output, b''.join(daemon.EVENT.pack(10, 0, *event) for event in down))
       return fds, [], []
     return [], [], []
 
