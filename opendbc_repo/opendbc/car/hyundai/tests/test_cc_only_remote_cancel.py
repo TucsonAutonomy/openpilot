@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from opendbc.can import CANPacker
-from opendbc.car.hyundai.carcontroller import CC_ONLY_ENGAGE_LOCKOUT_FRAMES, CC_ONLY_PRESS_FRAMES, CarController, CcOnlyRemoteButtons
+from opendbc.car.hyundai.carcontroller import CC_ONLY_ENGAGE_LOCKOUT_FRAMES, CC_ONLY_PRESS_FRAMES, CC_ONLY_SET_PRESS_FRAMES, \
+                                              CC_ONLY_SET_WATCH_FRAMES, CarController, CcOnlyRemoteButtons
 from opendbc.car.hyundai.values import Buttons, HyundaiFlags, REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
 from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_TOGGLE
 
@@ -78,8 +79,54 @@ def test_other_requests_never_press(request_value):
 
 
 def test_set_engages_at_current_speed_when_cruise_has_been_off():
-  assert _press(CcOnlyRemoteButtons(), REMOTE_CRUISE_SET_REQUEST, False, CC_ONLY_PRESS_FRAMES + 20) == \
-         [SET] * CC_ONLY_PRESS_FRAMES + [NONE] * 20
+  # longer than CANCEL/RES: the factory cruise is slower to take SET, above all with the accelerator pressed
+  assert _press(CcOnlyRemoteButtons(), REMOTE_CRUISE_SET_REQUEST, False, CC_ONLY_SET_PRESS_FRAMES + 20) == \
+         [SET] * CC_ONLY_SET_PRESS_FRAMES + [NONE] * 20
+
+
+def test_set_press_logs_how_long_the_lamp_took(capsys):
+  buttons = CcOnlyRemoteButtons()
+  assert _press(buttons, REMOTE_CRUISE_SET_REQUEST, False, 45) == [SET] * 45
+  assert buttons.update(0, True) == NONE
+  assert "factory cruise on after 45 frames of SET" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("lamp_frame, expected", [(120, "factory cruise on 1.20s after the SET press ended"),
+                                                  (None, "factory cruise still off 3.00s after the SET press ended")])
+def test_lamp_is_watched_after_a_set_press_without_effect(capsys, lamp_frame, expected):
+  buttons = CcOnlyRemoteButtons()
+  _press(buttons, REMOTE_CRUISE_SET_REQUEST, False, CC_ONLY_SET_PRESS_FRAMES)
+  for frame in range(1, CC_ONLY_SET_WATCH_FRAMES + 50):
+    assert buttons.update(0, lamp_frame is not None and frame >= lamp_frame) == NONE
+  out = capsys.readouterr().out
+  assert "SET window ended with factory cruise still off" in out
+  assert out.count("after the SET press ended") == 1
+  assert expected in out
+
+
+@pytest.mark.parametrize("interrupt, ended", [("brake", "0.50s after the SET press ended (brake)"),
+                                              ("press", "0.51s after the SET press ended (new remote press)")])  # counts the press frame
+def test_set_watch_ends_on_brake_or_a_new_press(capsys, interrupt, ended):
+  buttons = CcOnlyRemoteButtons()
+  _press(buttons, REMOTE_CRUISE_SET_REQUEST, False, CC_ONLY_SET_PRESS_FRAMES)
+  for _ in range(50):
+    buttons.update(0, False)
+  if interrupt == "brake":
+    buttons.abort()
+  else:
+    assert buttons.update(REMOTE_CRUISE_SET_REQUEST, False) == SET
+  for _ in range(CC_ONLY_SET_WATCH_FRAMES):
+    buttons.update(0, True)  # a later engagement no longer belongs to the first press
+  out = capsys.readouterr().out
+  assert f"factory cruise still off {ended}" in out
+  assert out.count("after the SET press ended") == 1
+
+
+@pytest.mark.parametrize("request_value, lamp_on", [(REMOTE_CRUISE_TOGGLE_REQUEST, False), (REMOTE_CRUISE_TOGGLE_REQUEST, True)])
+def test_cancel_and_res_presses_are_not_watched(capsys, request_value, lamp_on):
+  _press(CcOnlyRemoteButtons(), request_value, lamp_on, CC_ONLY_PRESS_FRAMES + CC_ONLY_SET_WATCH_FRAMES)
+  out = capsys.readouterr().out
+  assert "window ended" in out and "after the SET press ended" not in out
 
 
 def test_set_does_nothing_while_cruise_is_engaged():
