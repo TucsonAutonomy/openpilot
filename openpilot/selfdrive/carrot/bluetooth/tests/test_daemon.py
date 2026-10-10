@@ -143,7 +143,7 @@ def test_held_speed_repeats_and_interruptions_remove_pending_ticks(tmp_path, mon
 
 
 @pytest.mark.parametrize('pedal', ['none', 'gas', 'brake', 'both'])
-@pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle', 'cruiseSet'])
+@pytest.mark.parametrize('action', ['laneLeft', 'accelCruise', 'cruiseToggle', 'cruiseSet', 'cruiseResAccel', 'cruiseSetDecel'])
 @pytest.mark.parametrize('gesture', ['single', 'double', 'double+lane', 'swipe', 'swipe+lane'])
 def test_pedals_only_spare_lane_changes_and_cc_only_cruise_buttons_on_gas(tmp_path, monkeypatch, pedal, action, gesture):
   mac = '00:11:22:33:44:55'

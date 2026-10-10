@@ -4,19 +4,23 @@ import pytest
 
 from opendbc.can import CANPacker
 from opendbc.car.hyundai.carcontroller import CC_ONLY_ENGAGE_LOCKOUT_FRAMES, CC_ONLY_PRESS_FRAMES, CC_ONLY_SET_PRESS_FRAMES, \
-                                              CC_ONLY_SET_WATCH_FRAMES, CarController, CcOnlyRemoteButtons
-from opendbc.car.hyundai.values import Buttons, HyundaiFlags, REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
-from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_TOGGLE
+                                              CC_ONLY_SET_WATCH_FRAMES, CC_ONLY_STEP_FRAMES, CarController, CcOnlyRemoteButtons
+from opendbc.car.hyundai.values import Buttons, HyundaiFlags, REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_RES_ACCEL_REQUEST, \
+                                       REMOTE_CRUISE_SET_DECEL_REQUEST, REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
+from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_RES_ACCEL, BLUETOOTH_CRUISE_SET, \
+                                                       BLUETOOTH_CRUISE_SET_DECEL, BLUETOOTH_CRUISE_TOGGLE
 
 CLU11_SIGNALS = ("CF_Clu_CruiseSwState", "CF_Clu_CruiseSwMain", "CF_Clu_SldMainSW", "CF_Clu_ParityBit1", "CF_Clu_VanzDecimal",
                  "CF_Clu_Vanz", "CF_Clu_SPEED_UNIT", "CF_Clu_DetentOut", "CF_Clu_RheostatLevel", "CF_Clu_CluInfo", "CF_Clu_AmpInfo",
                  "CF_Clu_AliveCnt1")
 NONE, RES, SET, CANCEL = Buttons.NONE, Buttons.RES_ACCEL, Buttons.SET_DECEL, Buttons.CANCEL
+WHEEL = [(REMOTE_CRUISE_RES_ACCEL_REQUEST, RES), (REMOTE_CRUISE_SET_DECEL_REQUEST, SET)]
 
 
 def test_requests_match_bluetooth_actions():
-  assert (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST) == \
-         (BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET)
+  assert (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST,
+          REMOTE_CRUISE_RES_ACCEL_REQUEST, REMOTE_CRUISE_SET_DECEL_REQUEST) == \
+         (BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_RES_ACCEL, BLUETOOTH_CRUISE_SET_DECEL)
 
 
 def _press(buttons, request, lamp_on, frames):
@@ -142,7 +146,7 @@ def test_set_stops_as_soon_as_cruise_engages():
   assert buttons.update(0, False) == NONE
 
 
-@pytest.mark.parametrize("request_value, button", [(REMOTE_CRUISE_SET_REQUEST, SET), (REMOTE_CRUISE_TOGGLE_REQUEST, RES)])
+@pytest.mark.parametrize("request_value, button", [(REMOTE_CRUISE_SET_REQUEST, SET), (REMOTE_CRUISE_TOGGLE_REQUEST, RES), *WHEEL])
 def test_engage_requests_share_the_lockout_and_brake_abort(request_value, button):
   buttons = CcOnlyRemoteButtons()
   buttons.update(0, True)
@@ -153,6 +157,45 @@ def test_engage_requests_share_the_lockout_and_brake_abort(request_value, button
   buttons.abort()
   assert buttons.update(0, False) == NONE
   assert buttons.update(request_value, False) == NONE
+
+
+@pytest.mark.parametrize("request_value, button", WHEEL)
+def test_wheel_request_is_one_speed_step_while_engaged(capsys, request_value, button):
+  # no lockout: cruise has just come on, and the lamp staying on does not end the tap early
+  buttons = CcOnlyRemoteButtons()
+  buttons.update(0, True)
+  assert _press(buttons, request_value, True, CC_ONLY_STEP_FRAMES + 20) == [button] * CC_ONLY_STEP_FRAMES + [NONE] * 20
+  out = capsys.readouterr().out
+  name = "RES" if button == RES else "SET"
+  assert f"sending CLU11 {name} step" in out and f"{name} step sent for {CC_ONLY_STEP_FRAMES} frames" in out
+  assert "after the SET press ended" not in out  # a step is not an engage attempt
+
+
+@pytest.mark.parametrize("request_value, button", WHEEL)
+def test_speed_step_never_resumes_or_sets_cruise_that_turned_off(capsys, request_value, button):
+  buttons = CcOnlyRemoteButtons()
+  assert buttons.update(request_value, True) == button
+  assert buttons.update(0, True) == button
+  assert _press(buttons, 0, False, CC_ONLY_SET_PRESS_FRAMES) == [NONE] * CC_ONLY_SET_PRESS_FRAMES
+  assert "step stopped: factory cruise turned off" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("request_value, button", WHEEL)
+def test_brake_aborts_a_speed_step(request_value, button):
+  buttons = CcOnlyRemoteButtons()
+  assert buttons.update(request_value, True) == button
+  buttons.abort()
+  assert buttons.update(0, True) == NONE
+
+
+@pytest.mark.parametrize("request_value, button, frames", [(REMOTE_CRUISE_RES_ACCEL_REQUEST, RES, CC_ONLY_PRESS_FRAMES),
+                                                           (REMOTE_CRUISE_SET_DECEL_REQUEST, SET, CC_ONLY_SET_PRESS_FRAMES)])
+def test_wheel_request_resumes_or_sets_while_cruise_is_off(request_value, button, frames):
+  # the same press as cancel/resume and set at current speed, stopping once the lamp comes on
+  assert _press(CcOnlyRemoteButtons(), request_value, False, frames + 20) == [button] * frames + [NONE] * 20
+  buttons = CcOnlyRemoteButtons()
+  assert buttons.update(request_value, False) == button
+  assert buttons.update(0, True) == NONE
 
 
 def _button_messages(cc_only, activate_cruise, lamp_on, brake=False, gas=False):
@@ -176,6 +219,10 @@ def _button_messages(cc_only, activate_cruise, lamp_on, brake=False, gas=False):
   (REMOTE_CRUISE_TOGGLE_REQUEST, True, CANCEL),
   (REMOTE_CRUISE_TOGGLE_REQUEST, False, RES),
   (REMOTE_CRUISE_SET_REQUEST, False, SET),
+  (REMOTE_CRUISE_RES_ACCEL_REQUEST, True, RES),
+  (REMOTE_CRUISE_RES_ACCEL_REQUEST, False, RES),
+  (REMOTE_CRUISE_SET_DECEL_REQUEST, True, SET),
+  (REMOTE_CRUISE_SET_DECEL_REQUEST, False, SET),
 ])
 @pytest.mark.parametrize("gas", [False, True])  # unlike the brake, the accelerator never stops a press
 def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button, gas):
@@ -187,7 +234,8 @@ def test_cc_only_remote_sends_one_clu11_button(request_value, lamp_on, button, g
   assert spam_calls == []
 
 
-@pytest.mark.parametrize("request_value", [REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST])
+@pytest.mark.parametrize("request_value", [REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST,
+                                           REMOTE_CRUISE_RES_ACCEL_REQUEST, REMOTE_CRUISE_SET_DECEL_REQUEST])
 @pytest.mark.parametrize("kwargs", [{"cc_only": False, "lamp_on": True}, {"cc_only": False, "lamp_on": False},
                                     {"cc_only": True, "lamp_on": True, "brake": True},
                                     {"cc_only": True, "lamp_on": False, "brake": True}])

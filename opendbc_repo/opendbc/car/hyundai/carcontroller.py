@@ -9,7 +9,8 @@ from opendbc.car.hyundai.carstate import CarState
 from opendbc.car.hyundai.stopping import CanfdStopping
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CAN_GEARS, HyundaiExtFlags, REMOTE_CANCEL_REQUEST, \
-                                       REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST
+                                       REMOTE_CRUISE_RES_ACCEL_REQUEST, REMOTE_CRUISE_SET_DECEL_REQUEST, REMOTE_CRUISE_SET_REQUEST, \
+                                       REMOTE_CRUISE_TOGGLE_REQUEST
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.filter_simple import MyMovingAverage
@@ -54,8 +55,12 @@ CC_ONLY_PRESS_FRAMES = int(0.3 / DT_CTRL)  # about one human press of a wheel cr
 # The factory cruise took about 0.2 s to engage on SET, and not within 0.3 s with the accelerator pressed
 CC_ONLY_SET_PRESS_FRAMES = int(1.0 / DT_CTRL)
 CC_ONLY_SET_WATCH_FRAMES = int(3.0 / DT_CTRL)  # after a SET press without effect, log whether cruise still comes on
+# one tap of RES/SET while engaged (a wheel tap steps the Tucson set speed by 2 km/h); not yet tuned in the car
+CC_ONLY_STEP_FRAMES = int(0.2 / DT_CTRL)
 CC_ONLY_ENGAGE_LOCKOUT_FRAMES = int(2.0 / DT_CTRL)  # cruise must stay off this long before a remote RES/SET
-CC_ONLY_REMOTE_REQUESTS = (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST)
+# requests that press the wheel button itself: a speed step while engaged, otherwise resume / set
+CC_ONLY_WHEEL_REQUESTS = {REMOTE_CRUISE_RES_ACCEL_REQUEST: Buttons.RES_ACCEL, REMOTE_CRUISE_SET_DECEL_REQUEST: Buttons.SET_DECEL}
+CC_ONLY_REMOTE_REQUESTS = (REMOTE_CANCEL_REQUEST, REMOTE_CRUISE_TOGGLE_REQUEST, REMOTE_CRUISE_SET_REQUEST, *CC_ONLY_WHEEL_REQUESTS)
 CC_ONLY_BUTTON_NAMES = {Buttons.CANCEL: "CANCEL", Buttons.RES_ACCEL: "RES", Buttons.SET_DECEL: "SET"}
 
 
@@ -65,12 +70,16 @@ class CcOnlyRemoteButtons:
     cancel: CANCEL while cruise is engaged
     toggle: CANCEL while engaged, otherwise RES (resume the previous set speed)
     set:    SET (engage at the current speed) while not engaged, nothing while engaged
+    speed+/resume, speed-/set: like the wheel RES+ / SET-, one short tap (a set speed step) while engaged,
+            otherwise RES / SET like toggle and set
   RES and SET wait until cruise has stayed off for the lockout. A press stops as soon as the lamp shows it
   took effect; SET may last up to 1 s instead of 0.3 s, and when its lamp never came on, the next 3 s are
-  logged. Brake, auto hold or the parking brake abort a press and restart the lockout, so the remote never
+  logged. A speed step needs no lockout and stops if the lamp goes off, so it never resumes or sets cruise.
+  Brake, auto hold or the parking brake abort a press and restart the lockout, so the remote never
   engages within two seconds of a cancel or a brake press."""
   def __init__(self):
     self.button = Buttons.NONE
+    self.step = False  # a set speed step while engaged
     self.press_frames = self.frames_left = 0
     self.set_watch = -1  # frames since a SET press ended without effect, -1 when not watching
     self.lamp_off_frames = CC_ONLY_ENGAGE_LOCKOUT_FRAMES
@@ -87,12 +96,16 @@ class CcOnlyRemoteButtons:
       print(f"[cc_only] factory cruise {'on' if lamp_on else 'still off'} {self.set_watch * DT_CTRL:.2f}s after the SET press ended{why}")
       self.set_watch = -1
 
-  def _press(self, button: int):
-    self.button = button
-    self.press_frames = self.frames_left = CC_ONLY_SET_PRESS_FRAMES if button == Buttons.SET_DECEL else CC_ONLY_PRESS_FRAMES
+  def _press(self, button: int, step: bool = False):
+    self.button, self.step = button, step
+    self.press_frames = self.frames_left = CC_ONLY_STEP_FRAMES if step else \
+                                           CC_ONLY_SET_PRESS_FRAMES if button == Buttons.SET_DECEL else CC_ONLY_PRESS_FRAMES
 
   def _start(self, request: int, lamp_on: bool):
-    if lamp_on and request == REMOTE_CRUISE_SET_REQUEST:
+    if lamp_on and request in CC_ONLY_WHEEL_REQUESTS:
+      self._press(CC_ONLY_WHEEL_REQUESTS[request], step=True)
+      print(f"[cc_only] remote speed{'+' if self.button == Buttons.RES_ACCEL else '-'}: sending CLU11 {CC_ONLY_BUTTON_NAMES[self.button]} step")
+    elif lamp_on and request == REMOTE_CRUISE_SET_REQUEST:
       print("[cc_only] remote set ignored: factory cruise already engaged")
     elif lamp_on:
       self._press(Buttons.CANCEL)
@@ -100,7 +113,7 @@ class CcOnlyRemoteButtons:
     elif request == REMOTE_CANCEL_REQUEST:
       print("[cc_only] remote cancel ignored: factory cruise not engaged")
     else:
-      button = Buttons.SET_DECEL if request == REMOTE_CRUISE_SET_REQUEST else Buttons.RES_ACCEL
+      button = Buttons.SET_DECEL if request in (REMOTE_CRUISE_SET_REQUEST, REMOTE_CRUISE_SET_DECEL_REQUEST) else Buttons.RES_ACCEL
       action = "set" if button == Buttons.SET_DECEL else "resume"
       if self.lamp_off_frames < CC_ONLY_ENGAGE_LOCKOUT_FRAMES:
         print(f"[cc_only] remote {action} blocked: cruise off for only {self.lamp_off_frames * DT_CTRL:.1f}s")
@@ -121,13 +134,20 @@ class CcOnlyRemoteButtons:
     if self.frames_left == 0:
       return Buttons.NONE
     name = CC_ONLY_BUTTON_NAMES[self.button]
-    if lamp_on == (self.button != Buttons.CANCEL):
+    if self.step and not lamp_on:
+      # a speed step must not resume or set cruise that turned off meanwhile
+      print(f"[cc_only] {name} step stopped: factory cruise turned off")
+      self.frames_left = 0
+      return Buttons.NONE
+    if not self.step and lamp_on == (self.button != Buttons.CANCEL):
       # CANCEL is done once the lamp goes off, RES/SET once it comes on
       print(f"[cc_only] factory cruise {'on' if lamp_on else 'off'} after {self.press_frames - self.frames_left} frames of {name}")
       self.frames_left = 0
       return Buttons.NONE
     self.frames_left -= 1
-    if self.frames_left == 0:
+    if self.frames_left == 0 and self.step:
+      print(f"[cc_only] {name} step sent for {self.press_frames} frames")
+    elif self.frames_left == 0:
       print(f"[cc_only] {name} window ended with factory cruise still {'on' if lamp_on else 'off'}")
       if self.button == Buttons.SET_DECEL:
         self.set_watch = 0

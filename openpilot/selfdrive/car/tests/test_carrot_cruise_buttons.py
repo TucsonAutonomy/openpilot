@@ -5,7 +5,8 @@ import pytest
 from openpilot.cereal import car
 from openpilot.selfdrive.car.cruise import ButtonType, VCruiseCarrot, is_hold_interlock_active
 from openpilot.selfdrive.carrot.cruise_gap import cruise_gap_levels
-from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_TOGGLE
+from openpilot.selfdrive.carrot.bluetooth.model import BLUETOOTH_CANCEL, BLUETOOTH_CRUISE_RES_ACCEL, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_SET_DECEL, \
+                                                       BLUETOOTH_CRUISE_TOGGLE
 
 
 def make_cruise_helper(button_kph, cruise_button_mode, carrot_cruise_active, cruise_enabled,
@@ -711,7 +712,8 @@ def test_gap_long_press_still_changes_driving_mode():
   assert values == {"MyDrivingMode": 1, "LongitudinalPersonality": 1}
 
 
-@pytest.mark.parametrize('action, request_value', [('cruiseToggle', BLUETOOTH_CRUISE_TOGGLE), ('cruiseSet', BLUETOOTH_CRUISE_SET)])
+@pytest.mark.parametrize('action, request_value', [('cruiseToggle', BLUETOOTH_CRUISE_TOGGLE), ('cruiseSet', BLUETOOTH_CRUISE_SET),
+                                                   ('cruiseResAccel', BLUETOOTH_CRUISE_RES_ACCEL), ('cruiseSetDecel', BLUETOOTH_CRUISE_SET_DECEL)])
 @pytest.mark.parametrize('cc_only', [True, False])
 @pytest.mark.parametrize('gas', [False, True])
 def test_remote_factory_cruise_buttons_are_cc_only_requests(cc_only, action, request_value, gas):
@@ -728,7 +730,7 @@ def test_remote_factory_cruise_buttons_are_cc_only_requests(cc_only, action, req
   assert not CS.buttonEvents
 
 
-@pytest.mark.parametrize('action', ['cruiseToggle', 'cruiseSet'])
+@pytest.mark.parametrize('action', ['cruiseToggle', 'cruiseSet', 'cruiseResAccel', 'cruiseSetDecel'])
 @pytest.mark.parametrize('block', ['can', 'available', 'gear', 'button'])
 def test_remote_factory_cruise_buttons_keep_the_remote_gate(block, action):
   helper, CS, CC = make_remote_helper(action)
@@ -742,7 +744,7 @@ def test_remote_factory_cruise_buttons_keep_the_remote_gate(block, action):
   assert helper._activate_cruise == 0
 
 
-@pytest.mark.parametrize('request_value', [BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET])
+@pytest.mark.parametrize('request_value', [BLUETOOTH_CRUISE_TOGGLE, BLUETOOTH_CRUISE_SET, BLUETOOTH_CRUISE_RES_ACCEL, BLUETOOTH_CRUISE_SET_DECEL])
 def test_remote_factory_cruise_requests_create_no_engagement_events(request_value):
   from openpilot.selfdrive.car.car_specific import CarSpecificEvents
   from openpilot.selfdrive.selfdrived.events import EventName

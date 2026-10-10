@@ -25,6 +25,7 @@ const WORDS = {
     accelCruiseLong: "크루즈 + 길게 (10단위 조절)", decelCruiseLong: "크루즈 − 길게 (10단위 조절)",
     gapAdjustCruiseLong: "갭 길게 (주행 모드 순환)", lfaButton: "LFA 버튼", lfaButtonLong: "LFA 길게 (차선 모드 전환)",
     cancelCruise: "크루즈 취소", cancelLong: "취소 길게 (크루즈·조향 해제)", cruiseToggle: "크루즈 취소/재개 (CC 온리)", cruiseSet: "현재 속도로 크루즈 시작 (CC 온리)",
+    cruiseResAccel: "크루즈 속도+/재개 (CC 온리)", cruiseSetDecel: "크루즈 속도−/시작 (CC 온리)",
     buttonHelp: "크루즈 +/−는 크루즈가 꺼져 있으면 기존 활성화 조건을 거쳐 켜기를 요청합니다. 버튼의 ‘길게’ 동작도 기능 목록에서 선택할 수 있습니다. 예: 리모컨 짧게 누르기 → 크루즈 + 길게. 이 경우 추가로 기다리지 않고 핸들 버튼의 롱 동작을 한 번 실행합니다. LFA와 갭의 동작은 기존 설정을 따릅니다.",
   },
   en: {
@@ -51,6 +52,7 @@ const WORDS = {
     accelCruiseLong: "Cruise + long (10-step adjustment)", decelCruiseLong: "Cruise − long (10-step adjustment)",
     gapAdjustCruiseLong: "Gap long (cycle driving mode)", lfaButton: "LFA button", lfaButtonLong: "LFA long (toggle lane-line mode)",
     cancelCruise: "Cancel cruise", cancelLong: "Cancel long (cruise and lateral off)", cruiseToggle: "Cruise cancel/resume (CC-only)", cruiseSet: "Set cruise at current speed (CC-only)",
+    cruiseResAccel: "Cruise speed+/resume (CC-only)", cruiseSetDecel: "Cruise speed−/set (CC-only)",
     buttonHelp: "Cruise +/− request engagement through existing checks when cruise is off. Native long-button actions are separate choices: for example, a short remote press can run Cruise + long once, with no additional hold delay. LFA and gap actions follow existing settings.",
   },
 };
